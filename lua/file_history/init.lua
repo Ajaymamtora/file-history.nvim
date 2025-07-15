@@ -18,7 +18,16 @@ local defaults = {
   -- This is the location where it will create your file history repository
   backup_dir = "~/.file-history-git",
   -- command line to execute git
-  git_cmd = "git"
+  git_cmd = "git",
+  key_bindings = {
+    -- Actions
+    open_buffer_diff_tab = "<M-d>",
+    open_file_diff_tab = "<M-d>",
+    revert_to_selected = "<C-r>",
+    toggle_incremental = "<M-l>",
+    delete_history = "<M-d>",
+    purge_history = "<M-p>",
+  },
 }
 
 
@@ -148,9 +157,9 @@ local function file_history_picker(data)
     title = "FileHistory history",
     input = {
       keys = {
-        ["<M-d>"] = { "open_buffer_diff_tab", desc = "Open diff in new tab", mode = { "n", "i" } },
-        ["<C-r>"] = { "revert_to_selected", desc = "Revert current buffer to selected commit", mode = { "n", "i" } },
-        ["<M-l>"] = { "toggle_incremental", desc = "Toggle incremental diff mode", mode = { "n", "i" } },
+        [M.opts.key_bindings.open_buffer_diff_tab] = { "open_buffer_diff_tab", desc = "Open diff in new tab", mode = { "n", "i" } },
+        [M.opts.key_bindings.revert_to_selected] = { "revert_to_selected", desc = "Revert current buffer to selected commit", mode = { "n", "i" } },
+        [M.opts.key_bindings.toggle_incremental] = { "toggle_incremental", desc = "Toggle incremental diff mode", mode = { "n", "i" } },
       }
     }
   }
@@ -190,8 +199,8 @@ local function file_history_files_picker()
     title = "FileHistory files",
     input = {
       keys = {
-        ["<M-d>"] = { "delete_history", desc = "Delete file's history", mode = { "n", "i" } },
-        ["<M-p>"] = { "purge_history", desc = "Purge file's history", mode = { "n", "i" } },
+        [M.opts.key_bindings.delete_history] = { "delete_history", desc = "Delete file's history", mode = { "n", "i" } },
+        [M.opts.key_bindings.purge_history] = { "purge_history", desc = "Purge file's history", mode = { "n", "i" } },
       }
     }
   }
@@ -263,8 +272,8 @@ function M.query()
           title = "FileHistory query",
           input = {
             keys = {
-              ["<M-d>"] = { "open_file_diff_tab", desc = "Open diff in new tab", mode = { "n", "i" } },
-              ["<M-l>"] = { "toggle_incremental", desc = "Toggle incremental diff mode", mode = { "n", "i" } },
+              [M.opts.key_bindings.open_file_diff_tab] = { "open_file_diff_tab", desc = "Open diff in new tab", mode = { "n", "i" } },
+              [M.opts.key_bindings.toggle_incremental] = { "toggle_incremental", desc = "Toggle incremental diff mode", mode = { "n", "i" } },
             }
           }
       }

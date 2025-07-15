@@ -48,7 +48,7 @@ plugin could look like this:
       -- Location where the plugin will create your file history repository
       backup_dir = "~/.file-history-git",
       -- command line to execute git
-      git_cmd = "git"
+      git_cmd = "git",
       -- If you want to override the automatic query for hostname, change this
       -- option. By default (nil), the plugin gets the host name for the computer
       -- it is running on.
@@ -64,7 +64,18 @@ plugin could look like this:
       -- disregard the host name, in many cases you will be editing other types
       -- of files, where keeping the correct host name will help you recover
       -- from mistakes.
-      hostname = nil
+      hostname = nil,
+      -- Key bindings for the picker actions. Read below to know what each
+      -- action means
+      key_bindings = {
+        -- Actions
+        open_buffer_diff_tab = "<M-d>",
+        open_file_diff_tab = "<M-d>",
+        revert_to_selected = "<C-r>",
+        toggle_incremental = "<M-l>",
+        delete_history = "<M-d>",
+        purge_history = "<M-p>",
+      },
     })
     -- There are no default key maps, this is an example
     vim.keymap.set('n', '<leader>Bb',function() file_history.backup() end, { silent = true, desc = 'named backup for file' })
@@ -105,12 +116,12 @@ preview panel.
 
 This picker supports four plugin-specific key bindings:
 
-```
-<CR>        Opens the selected version of the file in a new tab.
-<M-d>       Opens a diff of the selection with the current buffer in a new tab
-<C-r>       Reverts the current buffer to the selected commit version
-<M-l>       Toggles between incremental and absolute diff mode
-```
+| **Key** |   **Action**           | **Description**                                                    |
+|---------|------------------------|--------------------------------------------------------------------|
+| `<CR>`  | `default`              | Opens the selected version of the file in a new tab.               |
+| `<M-d>` | `open_buffer_diff_tab` | Opens a diff of the selection with the current buffer in a new tab |
+| `<C-r>` | `revert_to_selected`   | Reverts the current buffer to the selected commit version          |
+| `<M-l>` | `toggle_incremental`   | Toggles between incremental and absolute diff mode                 |
 
 Incremental diff mode shows the differences between contiguous commits.
 Absolute mode shows all the differences between the selected version and the
@@ -125,11 +136,11 @@ them from the backup history for space or privacy reasons.
 
 The plugin supports these additional key bindings:
 
-```
-<CR>        Open the latest known version of the selected file in a new tab
-<M-d>       Delete the selected file from the repo
-<M-p>       Purge the selected file from the repo
-```
+| **Key** |   **Action**           | **Description**                                                  |
+|---------|------------------------|------------------------------------------------------------------|
+| `<CR>`  | `default`              | Open the latest known version of the selected file in a new tab  |
+| `<M-d>` | `delete_history`       | Delete the selected file from the repo                           |
+| `<M-p>` | `purge_history`        | Purge the selected file from the repo                            |
 
 ### Query
 
@@ -147,11 +158,11 @@ You can use `After`, `Before`, both of them or none.
 
 `query` adds these additional key bindings to the picker:
 
-```
-<CR>        Opens the selected version of the file in a new tab.
-<M-d>       Opens a diff of the selection with the current buffer in a new tab
-<M-l>       Toggles between incremental and absolute diff mode
-```
+| **Key** |   **Action**         | **Description**                                                    |
+|---------|----------------------|--------------------------------------------------------------------|
+| `<CR>`  | `default`            | Opens the selected version of the file in a new tab.               |
+| `<M-d>` | `open_file_diff_tab` | Opens a diff of the selection with the current buffer in a new tab |
+| `<M-l>` | `toggle_incremental` | Toggles between incremental and absolute diff mode                 |
 
 
 ## Highlighting
