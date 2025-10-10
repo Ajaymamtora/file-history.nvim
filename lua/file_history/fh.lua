@@ -218,6 +218,11 @@ M.setup = function(opts)
   vim.api.nvim_create_autocmd({ "BufWritePost" }, {
     group = vim.api.nvim_create_augroup("file_history_group", { clear = true }),
     callback = function ()
+      -- ensure we don't try to back up special buffers like oil.nvim
+      if vim.bo.buftype ~= '' then
+        return
+      end
+
       FileHistory:backup_file(vim.fn.expand("%:p:h"), vim.fn.expand("%:t"))
     end,
   })
