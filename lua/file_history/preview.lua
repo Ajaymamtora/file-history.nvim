@@ -3,6 +3,12 @@
 
 local M = {}
 
+-- Require snacks for icon support
+local has_snacks, Snacks = pcall(require, "snacks")
+if not has_snacks then
+  error("This plugin requires folke/snacks.nvim")
+end
+
 local ns = vim.api.nvim_create_namespace("file_history.preview")
 
 -- Set up custom highlight group for "No newline at end of file" markers
@@ -221,6 +227,8 @@ function M.highlight_diff(buf, parsed_lines, win)
       hl_group = "DiffChange"
     elseif diff_line.type == "no_newline" then
       hl_group = "FileHistoryNoNewline"
+    elseif diff_line.type == "file_header" then
+      hl_group = "DiffChange"  -- Use DiffChange for file header background
     end
     -- Note: "context" lines get no highlight (default text color)
 
@@ -245,10 +253,42 @@ function M.highlight_diff(buf, parsed_lines, win)
   end
 end
 
+---Create file header block similar to snacks.nvim git_diff
+---@param filepath string The filepath to display
+---@return file_history.DiffLine[] Header lines
+local function create_file_header(filepath)
+  local header = {}
+
+  -- Get icon for the file
+  local filename = vim.fn.fnamemodify(filepath, ":t")
+  local icon, _ = Snacks.util.icon(filename, "file")
+
+  -- Line 1: Empty line with header background
+  table.insert(header, {
+    type = "file_header",
+    text = "",
+  })
+
+  -- Line 2: Icon + filepath with padding
+  table.insert(header, {
+    type = "file_header",
+    text = "  " .. icon .. "  " .. filepath,
+  })
+
+  -- Line 3: Empty line with header background
+  table.insert(header, {
+    type = "file_header",
+    text = "",
+  })
+
+  return header
+end
+
 ---Render diff with appropriate performance handling
 ---@param ctx table Snacks picker preview context
 ---@param diff_text string The unified diff string
-function M.render_diff(ctx, diff_text)
+---@param filepath? string Optional filepath to display in header
+function M.render_diff(ctx, diff_text, filepath)
   local preview = ctx.preview
 
   -- Parse the diff
@@ -259,6 +299,15 @@ function M.render_diff(ctx, diff_text)
 
   -- Filter "No newline at end of file" markers based on user preference
   parsed = filter_no_newline(parsed)
+
+  -- Prepend file header if filepath is provided
+  if filepath then
+    local header_lines = create_file_header(filepath)
+    -- Insert header lines at the beginning
+    for i = #header_lines, 1, -1 do
+      table.insert(parsed, 1, header_lines[i])
+    end
+  end
 
   local line_count = #parsed
 
@@ -329,6 +378,8 @@ function M.render_diff(ctx, diff_text)
           hl_group = "DiffChange"
         elseif diff_line.type == "no_newline" then
           hl_group = "FileHistoryNoNewline"
+        elseif diff_line.type == "file_header" then
+          hl_group = "DiffChange"  -- Use DiffChange for file header background
         end
 
         if hl_group then
