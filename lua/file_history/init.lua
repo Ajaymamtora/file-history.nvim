@@ -5,6 +5,7 @@ end
 
 local fh = require("file_history.fh")
 local actions = require("file_history.actions")
+local preview_module = require("file_history.preview")
 
 -- Set default values for highlighting groups
 vim.cmd("highlight default link FileHistoryTime Number")
@@ -19,6 +20,13 @@ local defaults = {
   backup_dir = "~/.file-history-git",
   -- command line to execute git
   git_cmd = "git",
+  -- Preview options
+  preview = {
+    header_style = "text", -- "text", "raw", or "none"
+    highlight_style = "full", -- "full" or "text" - whether to extend highlights to full line width
+    wrap = false, -- whether to wrap lines in preview window
+    show_no_newline = true, -- whether to show "\ No newline at end of file" markers
+  },
   key_bindings = {
     -- Actions
     open_buffer_diff_tab = "<M-d>",
@@ -64,7 +72,13 @@ local function preview_file_history(ctx, data)
       ctx.item.log = false
     end
   end
-  snacks_picker.preview.diff(ctx)
+
+  -- Get filepath for header
+  local bufname = vim.api.nvim_buf_get_name(data.buf)
+  local filepath = bufname ~= "" and bufname or "[No Name]"
+
+  -- Use custom preview rendering with highlighting
+  preview_module.render_diff(ctx, ctx.item.diff, filepath)
 end
 
 local function preview_file_query(ctx, data)
@@ -79,7 +93,12 @@ local function preview_file_query(ctx, data)
       ctx.item.log = false
     end
   end
-  snacks_picker.preview.diff(ctx)
+
+  -- Get filepath for header
+  local filepath = ctx.item.file
+
+  -- Use custom preview rendering with highlighting
+  preview_module.render_diff(ctx, ctx.item.diff, filepath)
 end
 
 local function file_history_finder(_)
@@ -207,7 +226,25 @@ local function file_history_files_picker()
   fhp.finder = file_history_files_finder
   fhp.format = function(item)
     local ret = {}
-    ret[#ret + 1] = { item.text or "", "FileHistoryFile" }
+    -- Get filename and directory path
+    local filename = vim.fn.fnamemodify(item.text, ":t")
+    local dirpath = vim.fn.fnamemodify(item.text, ":h")
+
+    -- Get icon for the file
+    local icon, icon_hl = Snacks.util.icon(filename, "file")
+
+    -- Add icon
+    ret[#ret + 1] = { icon .. " ", icon_hl or "Normal" }
+
+    -- Add filename (highlighted)
+    ret[#ret + 1] = { filename, "Normal" }
+
+    -- Add directory path (dimmed)
+    if dirpath and dirpath ~= "." then
+      ret[#ret + 1] = { " " }
+      ret[#ret + 1] = { dirpath, "Comment" }
+    end
+
     return ret
   end
   fhp.preview = function(ctx)
@@ -327,6 +364,9 @@ end
 function M.setup(opts)
   M.opts = vim.tbl_deep_extend("force", defaults, opts or {})
   fh.setup(opts)
+
+  -- Setup preview module with options
+  preview_module.setup(M.opts.preview or {})
 
   vim.api.nvim_create_user_command("FileHistory", commands, { nargs = 1 })
 end
