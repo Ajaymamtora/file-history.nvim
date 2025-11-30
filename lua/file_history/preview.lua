@@ -238,6 +238,23 @@ function M.highlight_diff(buf, parsed_lines, win)
         -- First highlight the actual text
         vim.api.nvim_buf_add_highlight(buf, ns, hl_group, line_idx, 0, -1)
 
+        -- For file_header with icon, apply icon highlight separately to preserve fg color
+        if diff_line.type == "file_header" and diff_line.icon_hl and diff_line.icon_end then
+          -- Get the background color from the header highlight group
+          local header_bg = vim.api.nvim_get_hl(0, { name = hl_group })
+
+          -- Create a combined highlight for the icon with its fg and header bg
+          local combined_hl = "FileHistoryIcon_" .. (diff_line.icon_hl or "Default")
+          local icon_fg = vim.api.nvim_get_hl(0, { name = diff_line.icon_hl or "Normal" })
+          vim.api.nvim_set_hl(0, combined_hl, {
+            fg = icon_fg.fg,
+            bg = header_bg.bg,
+          })
+
+          -- Apply the combined highlight to just the icon
+          vim.api.nvim_buf_add_highlight(buf, ns, combined_hl, line_idx, 2, diff_line.icon_end)
+        end
+
         -- Then extend to fill the line with overlay (snacks.nvim approach)
         local line_text = vim.api.nvim_buf_get_lines(buf, line_idx, line_idx + 1, false)[1] or ""
         vim.api.nvim_buf_set_extmark(buf, ns, line_idx, #line_text, {
@@ -248,6 +265,11 @@ function M.highlight_diff(buf, parsed_lines, win)
       else
         -- Text-only highlight (just the actual characters)
         vim.api.nvim_buf_add_highlight(buf, ns, hl_group, line_idx, 0, -1)
+
+        -- For file_header with icon, apply icon highlight separately
+        if diff_line.type == "file_header" and diff_line.icon_hl and diff_line.icon_end then
+          vim.api.nvim_buf_add_highlight(buf, ns, diff_line.icon_hl, line_idx, 2, diff_line.icon_end)
+        end
       end
     end
   end
@@ -261,7 +283,7 @@ local function create_file_header(filepath)
 
   -- Get icon for the file
   local filename = vim.fn.fnamemodify(filepath, ":t")
-  local icon, _ = Snacks.util.icon(filename, "file")
+  local icon, icon_hl = Snacks.util.icon(filename, "file")
 
   -- Line 1: Empty line with header background
   table.insert(header, {
@@ -270,9 +292,12 @@ local function create_file_header(filepath)
   })
 
   -- Line 2: Icon + filepath with padding
+  -- Store icon and icon_hl separately so we can preserve icon colors
   table.insert(header, {
     type = "file_header",
     text = "  " .. icon .. "  " .. filepath,
+    icon_hl = icon_hl,  -- Store the icon highlight group
+    icon_end = 2 + vim.fn.strdisplaywidth(icon),  -- Store where icon ends (after "  " + icon)
   })
 
   -- Line 3: Empty line with header background
@@ -386,6 +411,24 @@ function M.render_diff(ctx, diff_text, filepath)
           if highlight_style == "full" and win then
             -- Full-width highlight
             vim.api.nvim_buf_add_highlight(ctx.buf, ns, hl_group, line_idx, 0, -1)
+
+            -- For file_header with icon, apply icon highlight separately to preserve fg color
+            if diff_line.type == "file_header" and diff_line.icon_hl and diff_line.icon_end then
+              -- Get the background color from the header highlight group
+              local header_bg = vim.api.nvim_get_hl(0, { name = hl_group })
+
+              -- Create a combined highlight for the icon with its fg and header bg
+              local combined_hl = "FileHistoryIcon_" .. (diff_line.icon_hl or "Default")
+              local icon_fg = vim.api.nvim_get_hl(0, { name = diff_line.icon_hl or "Normal" })
+              vim.api.nvim_set_hl(0, combined_hl, {
+                fg = icon_fg.fg,
+                bg = header_bg.bg,
+              })
+
+              -- Apply the combined highlight to just the icon
+              vim.api.nvim_buf_add_highlight(ctx.buf, ns, combined_hl, line_idx, 2, diff_line.icon_end)
+            end
+
             local line_text = vim.api.nvim_buf_get_lines(ctx.buf, line_idx, line_idx + 1, false)[1] or ""
             vim.api.nvim_buf_set_extmark(ctx.buf, ns, line_idx, #line_text, {
               virt_text = { { string.rep(" ", 1000), hl_group } },
@@ -395,6 +438,11 @@ function M.render_diff(ctx, diff_text, filepath)
           else
             -- Text-only highlight
             vim.api.nvim_buf_add_highlight(ctx.buf, ns, hl_group, line_idx, 0, -1)
+
+            -- For file_header with icon, apply icon highlight separately
+            if diff_line.type == "file_header" and diff_line.icon_hl and diff_line.icon_end then
+              vim.api.nvim_buf_add_highlight(ctx.buf, ns, diff_line.icon_hl, line_idx, 2, diff_line.icon_end)
+            end
           end
         end
       end
