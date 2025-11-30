@@ -6,9 +6,10 @@
 
 1. **"No newline at end of file" marker** now properly handled
    - Previously inserted incorrectly within diff content
-   - Now dimmed with `Comment` highlight group
+   - Now highlighted with custom `FileHistoryNoNewline` highlight group
    - Always appears at the end of the diff (never between add/remove lines)
-   - Treated as metadata, not code
+   - Can be hidden completely via `show_no_newline = false` option
+   - Clearly distinguished from actual file content
 
 ### ✨ New Features
 
@@ -43,10 +44,16 @@
    - Automatic counting of additions, deletions, and hunks
    - Used in "text" header mode for summary
 
+5. **"No newline at end of file" Control**:
+   - **show_no_newline = true** (default): Display markers with custom highlight
+   - **show_no_newline = false**: Hide markers completely
+   - Uses `FileHistoryNoNewline` highlight group (linked to `NonText`)
+   - Can be customized to match your colorscheme
+
 ### 🎨 Visual Improvements
 
 - Proper syntax highlighting for all diff elements
-- "No newline at end of file" markers are now dimmed
+- "No newline at end of file" markers use dedicated highlight group
 - Headers formatted based on user preference
 - Full-width or text-only highlighting based on preference
 - Consistent with Neovim's standard diff highlight groups
@@ -59,6 +66,7 @@ require("file_history").setup({
     header_style = "text", -- "text", "raw", or "none"
     highlight_style = "full", -- "full" or "text"
     wrap = false, -- whether to wrap lines in preview window
+    show_no_newline = true, -- whether to show "\ No newline at end of file" markers
   },
 })
 ```
@@ -68,6 +76,7 @@ require("file_history").setup({
 - Header style: `"text"` (clean, human-readable)
 - Highlight style: `"full"` (extends to window width)
 - Line wrapping: `false` (no wrap, use horizontal scrolling)
+- Show "No newline" markers: `true` (display with special highlight)
 - Performance thresholds: Optimized for smooth scrolling
 - Highlight groups: Uses standard Neovim diff colors
 

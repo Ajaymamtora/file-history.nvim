@@ -5,11 +5,18 @@ local M = {}
 
 local ns = vim.api.nvim_create_namespace("file_history.preview")
 
+-- Set up custom highlight group for "No newline at end of file" markers
+vim.api.nvim_set_hl(0, "FileHistoryNoNewline", {
+  link = "NonText",
+  default = true
+})
+
 -- Default options
 M.opts = {
   header_style = "text", -- "text", "raw", or "none"
   highlight_style = "full", -- "full" or "text" - whether to extend highlights to full line width
   wrap = false, -- whether to wrap lines in preview
+  show_no_newline = true, -- whether to show "\ No newline at end of file" markers
 }
 
 -- Performance thresholds
@@ -164,6 +171,24 @@ local function format_headers(parsed_lines, stats)
   end
 end
 
+---Filter "No newline at end of file" markers based on user preference
+---@param parsed_lines file_history.DiffLine[]
+---@return file_history.DiffLine[]
+local function filter_no_newline(parsed_lines)
+  if M.opts.show_no_newline then
+    return parsed_lines
+  end
+
+  -- Remove all "no_newline" markers
+  local filtered = {}
+  for _, line in ipairs(parsed_lines) do
+    if line.type ~= "no_newline" then
+      table.insert(filtered, line)
+    end
+  end
+  return filtered
+end
+
 ---Apply syntax highlighting to a diff buffer
 ---@param buf number
 ---@param parsed_lines file_history.DiffLine[]
@@ -195,7 +220,7 @@ function M.highlight_diff(buf, parsed_lines, win)
     elseif diff_line.type == "header" then
       hl_group = "DiffChange"
     elseif diff_line.type == "no_newline" then
-      hl_group = "Comment"
+      hl_group = "FileHistoryNoNewline"
     end
     -- Note: "context" lines get no highlight (default text color)
 
@@ -231,6 +256,9 @@ function M.render_diff(ctx, diff_text)
 
   -- Format headers based on user preference
   parsed = format_headers(parsed, stats)
+
+  -- Filter "No newline at end of file" markers based on user preference
+  parsed = filter_no_newline(parsed)
 
   local line_count = #parsed
 
@@ -300,7 +328,7 @@ function M.render_diff(ctx, diff_text)
         elseif diff_line.type == "header" then
           hl_group = "DiffChange"
         elseif diff_line.type == "no_newline" then
-          hl_group = "Comment"
+          hl_group = "FileHistoryNoNewline"
         end
 
         if hl_group then

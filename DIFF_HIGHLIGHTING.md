@@ -149,6 +149,7 @@ The implementation uses Neovim's standard diff highlight groups:
 - `DiffAdd`: For added lines
 - `DiffDelete`: For deleted lines
 - `DiffChange`: For headers and modified sections
+- `FileHistoryNoNewline`: For "\ No newline at end of file" markers (linked to `NonText` by default)
 
 These respect your colorscheme and any custom highlight overrides.
 
@@ -164,6 +165,7 @@ require("file_history").setup({
     header_style = "text", -- "text", "raw", or "none"
     highlight_style = "full", -- "full" or "text"
     wrap = false, -- whether to wrap lines in preview window
+    show_no_newline = true, -- whether to show "\ No newline at end of file" markers
   },
 })
 ```
@@ -228,6 +230,35 @@ preview = {
 **false** (default): Long lines extend beyond the window edge. Use horizontal scrolling to view. This is recommended when using `highlight_style = "full"` to prevent visual artifacts.
 
 **true**: Long lines wrap to fit within the window. Better for readability but may break the visual alignment of diffs.
+
+### "No newline at end of file" Markers
+
+Control whether to display git's "\ No newline at end of file" markers:
+
+```lua
+-- Default: Show the markers (standard git behavior)
+preview = {
+  show_no_newline = true
+}
+
+-- Hide the markers (cleaner view)
+preview = {
+  show_no_newline = false
+}
+```
+
+**true** (default): Display "\ No newline at end of file" when a file doesn't end with a newline character. These markers are highlighted with the `FileHistoryNoNewline` highlight group (linked to `NonText` by default) to clearly distinguish them from actual file content.
+
+**false**: Hide these markers completely for a cleaner view.
+
+**Customizing the highlight**: You can override the `FileHistoryNoNewline` highlight group in your config:
+
+```lua
+vim.api.nvim_set_hl(0, "FileHistoryNoNewline", {
+  fg = "#666666",
+  italic = true
+})
+```
 
 ## Usage
 

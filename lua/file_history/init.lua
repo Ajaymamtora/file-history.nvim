@@ -25,6 +25,7 @@ local defaults = {
     header_style = "text", -- "text", "raw", or "none"
     highlight_style = "full", -- "full" or "text" - whether to extend highlights to full line width
     wrap = false, -- whether to wrap lines in preview window
+    show_no_newline = true, -- whether to show "\ No newline at end of file" markers
   },
   key_bindings = {
     -- Actions
