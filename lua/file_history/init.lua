@@ -59,6 +59,15 @@ local function split(str, sep)
 end
 
 local function preview_file_history(ctx, data)
+  -- Set preview title with icon and filename
+  local bufname = vim.api.nvim_buf_get_name(data.buf)
+  local filename = vim.fn.fnamemodify(bufname, ":t")
+  if filename == "" then
+    filename = "[No Name]"
+  end
+  local icon, _ = Snacks.util.icon(filename, "file")
+  ctx.preview:set_title(string.format("%s %s", icon, filename))
+
   if data.log ~= ctx.item.log then
     if data.log == true then
       ctx.item.diff = table.concat(fh.get_log(ctx.item.file, ctx.item.hash), '\n')
@@ -77,6 +86,13 @@ local function preview_file_history(ctx, data)
 end
 
 local function preview_file_query(ctx, data)
+  -- Set preview title with icon and filename
+  if ctx.item.file then
+    local filename = vim.fn.fnamemodify(ctx.item.file, ":t")
+    local icon, _ = Snacks.util.icon(filename, "file")
+    ctx.preview:set_title(string.format("%s %s", icon, filename))
+  end
+
   if data.log ~= ctx.item.log then
     if data.log == true then
       ctx.item.diff = table.concat(fh.get_log(ctx.item.file, ctx.item.hash), '\n')
@@ -217,7 +233,25 @@ local function file_history_files_picker()
   fhp.finder = file_history_files_finder
   fhp.format = function(item)
     local ret = {}
-    ret[#ret + 1] = { item.text or "", "FileHistoryFile" }
+    -- Get filename and directory path
+    local filename = vim.fn.fnamemodify(item.text, ":t")
+    local dirpath = vim.fn.fnamemodify(item.text, ":h")
+
+    -- Get icon for the file
+    local icon, icon_hl = Snacks.util.icon(filename, "file")
+
+    -- Add icon
+    ret[#ret + 1] = { icon .. " ", icon_hl or "Normal" }
+
+    -- Add filename (highlighted)
+    ret[#ret + 1] = { filename, "Normal" }
+
+    -- Add directory path (dimmed)
+    if dirpath and dirpath ~= "." then
+      ret[#ret + 1] = { " " }
+      ret[#ret + 1] = { dirpath, "Comment" }
+    end
+
     return ret
   end
   fhp.preview = function(ctx)
@@ -257,7 +291,21 @@ end
 
 function M.history()
   local data = prepare_picker_data()
-  snacks_picker.pick(file_history_picker(data))
+
+  -- Get current buffer name for title
+  local bufname = vim.api.nvim_buf_get_name(data.buf)
+  local filename = vim.fn.fnamemodify(bufname, ":t")
+  if filename == "" then
+    filename = "[No Name]"
+  end
+
+  -- Get icon for the file
+  local icon, _ = Snacks.util.icon(filename, "file")
+
+  local picker_opts = file_history_picker(data)
+  picker_opts.win.title = string.format("%s %s", icon, filename)
+
+  snacks_picker.pick(picker_opts)
 end
 
 function M.files()
