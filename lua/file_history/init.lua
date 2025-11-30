@@ -5,6 +5,7 @@ end
 
 local fh = require("file_history.fh")
 local actions = require("file_history.actions")
+local preview_module = require("file_history.preview")
 
 -- Set default values for highlighting groups
 vim.cmd("highlight default link FileHistoryTime Number")
@@ -19,6 +20,12 @@ local defaults = {
   backup_dir = "~/.file-history-git",
   -- command line to execute git
   git_cmd = "git",
+  -- Preview options
+  preview = {
+    header_style = "text", -- "text", "raw", or "none"
+    highlight_style = "full", -- "full" or "text" - whether to extend highlights to full line width
+    wrap = false, -- whether to wrap lines in preview window
+  },
   key_bindings = {
     -- Actions
     open_buffer_diff_tab = "<M-d>",
@@ -64,7 +71,8 @@ local function preview_file_history(ctx, data)
       ctx.item.log = false
     end
   end
-  snacks_picker.preview.diff(ctx)
+  -- Use custom preview rendering with highlighting
+  preview_module.render_diff(ctx, ctx.item.diff)
 end
 
 local function preview_file_query(ctx, data)
@@ -79,7 +87,8 @@ local function preview_file_query(ctx, data)
       ctx.item.log = false
     end
   end
-  snacks_picker.preview.diff(ctx)
+  -- Use custom preview rendering with highlighting
+  preview_module.render_diff(ctx, ctx.item.diff)
 end
 
 local function file_history_finder(_)
@@ -327,6 +336,9 @@ end
 function M.setup(opts)
   M.opts = vim.tbl_deep_extend("force", defaults, opts or {})
   fh.setup(opts)
+
+  -- Setup preview module with options
+  preview_module.setup(M.opts.preview or {})
 
   vim.api.nvim_create_user_command("FileHistory", commands, { nargs = 1 })
 end
