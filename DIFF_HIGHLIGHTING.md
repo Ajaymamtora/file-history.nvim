@@ -2,6 +2,10 @@
 
 This document describes the enhanced diff preview functionality added to file-history.nvim.
 
+## Development
+
+Tests and coverage instructions live in `README.md`.
+
 ## Overview
 
 The plugin now provides proper syntax highlighting for diff previews in the picker, making it much easier to see what has changed between file snapshots.

@@ -1,0 +1,18 @@
+return {
+  _all = {
+    -- Ensure plugin lua/ is in package.path
+    lpath = './lua/?.lua;./lua/?/init.lua;./spec/?.lua;./spec/?/init.lua',
+    -- Run a helper before every test file
+    helper = 'spec/helpers/busted_helper.lua',
+  },
+
+  default = {
+    verbose = true,
+  },
+
+  coverage = {
+    verbose = true,
+    coverage = true,
+    coverage_config_file = '.luacov',
+  },
+}
