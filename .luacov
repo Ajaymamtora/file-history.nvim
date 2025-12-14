@@ -1,0 +1,20 @@
+return {
+  statsfile = "luacov.stats.out",
+  reportfile = "luacov.report.out",
+  runreport = true,
+  deletestats = true,
+
+  -- Only count project code by default (exclude tests and stubs)
+  include = { "lua/file_history" },
+  exclude = {
+    "spec/",
+    "%.luarocks/",
+  },
+
+  modules = {
+    ["file_history"] = "lua/file_history/init.lua",
+    ["file_history.fh"] = "lua/file_history/fh.lua",
+    ["file_history.preview"] = "lua/file_history/preview.lua",
+    ["file_history.actions"] = "lua/file_history/actions.lua",
+  },
+}

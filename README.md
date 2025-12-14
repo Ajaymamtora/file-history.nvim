@@ -357,6 +357,27 @@ Check the backup directory has proper permissions:
 ls -la ~/.file-history-git
 ```
 
+## Development
+
+### Running tests
+
+This repo uses [busted](https://lunarmodules.github.io/busted/) for unit tests.
+
+```bash
+busted
+```
+
+### Running coverage
+
+Coverage is powered by `luacov`.
+
+```bash
+luarocks install --local luacov
+busted -r coverage
+```
+
+This produces `luacov.report.out` at the repo root.
+
 ## Related Projects
 
 - [snacks.nvim](https://github.com/folke/snacks.nvim) - Required dependency for the picker UI
