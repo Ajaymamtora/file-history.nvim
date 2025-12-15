@@ -21,7 +21,8 @@ vim.api.nvim_set_hl(0, "FileHistoryNoNewline", {
 M.opts = {
   header_style = "text", -- "text", "raw", or "none"
   highlight_style = "full", -- "full" or "text" - whether to extend highlights to full line width
-  wrap = true, -- whether to wrap lines in preview
+  wrap = false, -- whether to wrap diff content lines
+  title_wrap = true, -- whether to wrap filepath in header
   show_no_newline = true, -- whether to show "\ No newline at end of file" markers
   diff_style = "inline", -- "inline" or "side_by_side"
 }
@@ -409,6 +410,10 @@ end
 ---@param filepath string The filepath to display
 ---@param win_width? number Optional window width (unused, wrapping handled by Neovim)
 ---@return file_history.DiffLine[] Header lines
+---Create file header block with optional wrapping
+---@param filepath string The filepath to display
+---@param win_width? number Window width for wrapping calculation
+---@return file_history.DiffLine[] Header lines
 local function create_file_header(filepath, win_width)
   local header = {}
 
@@ -416,32 +421,72 @@ local function create_file_header(filepath, win_width)
   local filename = vim.fn.fnamemodify(filepath, ":t")
   local icon, icon_hl = Snacks.util.icon(filename, "file")
 
-  -- Build the content line: "  icon  filepath"
-  local content = "  " .. icon .. "  " .. filepath
+  -- Build the content: "  icon  filepath"
+  local prefix = "  " .. icon .. "  "
+  local prefix_width = vim.fn.strdisplaywidth(prefix)
   local icon_end_pos = 2 + vim.fn.strdisplaywidth(icon)
 
-  -- Line 1: Empty line with header background (top padding)
-  table.insert(header, {
-    type = "file_header",
-    text = "",
-  })
+  -- Top padding
+  table.insert(header, { type = "file_header", text = "" })
 
-  -- Line 2: Icon + filepath (Neovim handles wrapping via window wrap option)
-  table.insert(header, {
-    type = "file_header",
-    text = content,
-    icon_hl = icon_hl,
-    icon_end = icon_end_pos,
-  })
+  -- Handle title wrapping if enabled and needed
+  if M.opts.title_wrap and win_width and win_width > 0 then
+    local available_width = win_width - 4  -- Leave some margin
+    local path_width = vim.fn.strdisplaywidth(filepath)
+    local total_width = prefix_width + path_width
 
-  -- Line 3: Empty line with header background (bottom padding)
-  table.insert(header, {
-    type = "file_header",
-    text = "",
-  })
+    if total_width > available_width and available_width > prefix_width then
+      -- Need to wrap: first line has icon + start of path
+      local first_line_path_chars = available_width - prefix_width
+      if first_line_path_chars < 1 then first_line_path_chars = 1 end
+
+      -- Split filepath into chunks
+      local remaining = filepath
+      local is_first = true
+      local indent = string.rep(" ", prefix_width)  -- Indent for continuation lines
+
+      while #remaining > 0 do
+        local chunk_width = is_first and first_line_path_chars or (available_width - prefix_width)
+        if chunk_width < 1 then chunk_width = 10 end
+
+        -- Take chunk_width characters (approximate for UTF-8)
+        local chunk = remaining:sub(1, chunk_width)
+        remaining = remaining:sub(chunk_width + 1)
+
+        local line_text = is_first and (prefix .. chunk) or (indent .. chunk)
+        local entry = { type = "file_header", text = line_text }
+        if is_first then
+          entry.icon_hl = icon_hl
+          entry.icon_end = icon_end_pos
+        end
+        table.insert(header, entry)
+        is_first = false
+      end
+    else
+      -- No wrap needed
+      table.insert(header, {
+        type = "file_header",
+        text = prefix .. filepath,
+        icon_hl = icon_hl,
+        icon_end = icon_end_pos,
+      })
+    end
+  else
+    -- Wrapping disabled or no width info
+    table.insert(header, {
+      type = "file_header",
+      text = prefix .. filepath,
+      icon_hl = icon_hl,
+      icon_end = icon_end_pos,
+    })
+  end
+
+  -- Bottom padding
+  table.insert(header, { type = "file_header", text = "" })
 
   return header
 end
+
 
 
 
