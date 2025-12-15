@@ -6,6 +6,14 @@ local function make_dir(directory)
   end
 end
 
+-- Helper to remove trailing empty strings from lines array
+local function trim_trailing_empty(lines)
+  while #lines > 0 and lines[#lines] == "" do
+    table.remove(lines)
+  end
+  return lines
+end
+
 local function array_append(array, extra)
   for _, v in ipairs(extra) do
     table.insert(array, v)
@@ -195,12 +203,14 @@ end
 
 M.get_file = function(filename, hash)
   local proc = FileHistory:get_file(filename, hash)
-  return vim.iter(proc.stdout):flatten():totable()
+  local lines = vim.iter(proc.stdout):flatten():totable()
+  return trim_trailing_empty(lines)
 end
 
 M.get_log = function(filename, hash)
   local proc = FileHistory:get_log(filename, hash)
-  return vim.iter(proc.stdout):flatten():totable()
+  local lines = vim.iter(proc.stdout):flatten():totable()
+  return trim_trailing_empty(lines)
 end
 
 M.delete_file = function(filename)
