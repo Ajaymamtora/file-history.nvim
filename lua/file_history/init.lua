@@ -68,7 +68,7 @@ local function preview_file_history(ctx, data)
         return
       end
       local parent_lines = fh.get_file(ctx.item.file, ctx.item.hash)
-      ctx.item.diff = vim.diff(table.concat(data.buf_lines, '\n'), table.concat(parent_lines, '\n'), { result_type = 'unified', ctxlen = 3 })
+      ctx.item.diff = vim.diff(table.concat(data.buf_lines, '\n') .. '\n', table.concat(parent_lines, '\n') .. '\n', { result_type = 'unified', ctxlen = 3 })
       ctx.item.log = false
     end
   end
@@ -89,7 +89,7 @@ local function preview_file_query(ctx, data)
     else
       local lines = fh.get_file(ctx.item.file, "HEAD")
       local parent_lines = fh.get_file(ctx.item.file, ctx.item.hash)
-      ctx.item.diff = vim.diff(table.concat(lines, '\n'), table.concat(parent_lines, '\n'), { result_type = 'unified', ctxlen = 3 })
+      ctx.item.diff = vim.diff(table.concat(lines, '\n') .. '\n', table.concat(parent_lines, '\n') .. '\n', { result_type = 'unified', ctxlen = 3 })
       ctx.item.log = false
     end
   end
