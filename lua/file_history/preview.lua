@@ -401,29 +401,65 @@ end
 ---Create file header block similar to snacks.nvim git_diff
 ---@param filepath string The filepath to display
 ---@return file_history.DiffLine[] Header lines
-local function create_file_header(filepath)
+---Create file header block similar to snacks.nvim git_diff
+---@param filepath string The filepath to display
+---@param win_width? number Optional window width for wrapping
+---@return file_history.DiffLine[] Header lines
+local function create_file_header(filepath, win_width)
   local header = {}
 
   -- Get icon for the file
   local filename = vim.fn.fnamemodify(filepath, ":t")
   local icon, icon_hl = Snacks.util.icon(filename, "file")
 
-  -- Line 1: Empty line with header background
+  -- Build the content line: "  icon  filepath"
+  local content = "  " .. icon .. "  " .. filepath
+  local icon_end_pos = 2 + vim.fn.strdisplaywidth(icon)
+
+  -- Calculate how many lines the content will wrap to
+  local content_lines = { content }
+  if win_width and win_width > 0 then
+    local effective_width = win_width - 2  -- Leave margin
+    local content_width = vim.fn.strdisplaywidth(content)
+    if content_width > effective_width and effective_width > 10 then
+      -- Split into multiple lines for wrapping
+      content_lines = {}
+      local remaining = content
+      local first_line = true
+      while #remaining > 0 do
+        -- For wrapped lines, add indent to align with content after icon
+        local prefix = first_line and "" or "      "  -- 6 spaces to align after icon
+        local max_chars = effective_width - #prefix
+        if max_chars < 10 then max_chars = effective_width end
+        local line = prefix .. remaining:sub(1, max_chars)
+        table.insert(content_lines, line)
+        remaining = remaining:sub(max_chars + 1)
+        first_line = false
+      end
+    end
+  end
+
+  -- Line 1: Empty line with header background (top padding)
   table.insert(header, {
     type = "file_header",
     text = "",
   })
 
-  -- Line 2: Icon + filepath with padding
-  -- Store icon and icon_hl separately so we can preserve icon colors
-  table.insert(header, {
-    type = "file_header",
-    text = "  " .. icon .. "  " .. filepath,
-    icon_hl = icon_hl,  -- Store the icon highlight group
-    icon_end = 2 + vim.fn.strdisplaywidth(icon),  -- Store where icon ends (after "  " + icon)
-  })
+  -- Content lines (may be multiple if wrapped)
+  for i, line in ipairs(content_lines) do
+    local entry = {
+      type = "file_header",
+      text = line,
+    }
+    -- Only first line has icon highlight info
+    if i == 1 then
+      entry.icon_hl = icon_hl
+      entry.icon_end = icon_end_pos
+    end
+    table.insert(header, entry)
+  end
 
-  -- Line 3: Empty line with header background
+  -- Final empty line (bottom padding) - matches top padding
   table.insert(header, {
     type = "file_header",
     text = "",
@@ -431,6 +467,7 @@ local function create_file_header(filepath)
 
   return header
 end
+
 
 ---Render diff with appropriate performance handling
 ---@param ctx table Snacks picker preview context
@@ -450,7 +487,7 @@ function M.render_diff(ctx, diff_text, filepath)
 
   -- Prepend file header if filepath is provided
   if filepath then
-    local header_lines = create_file_header(filepath)
+    local header_lines = create_file_header(filepath, win_width)
     -- Insert header lines at the beginning
     for i = #header_lines, 1, -1 do
       table.insert(parsed, 1, header_lines[i])
