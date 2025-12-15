@@ -133,7 +133,7 @@ describe("file_history.preview", function()
     }, "\n")
 
     preview.render_diff(ctx, diff)
-    assert.are.same({ "-old", "+new" }, ctx._preview_state.lines)
+    assert.are.same({ "old", "new" }, ctx._preview_state.lines)
   end)
 
   it("render_diff respects show_no_newline=false", function()

@@ -23,6 +23,7 @@ M.opts = {
   highlight_style = "full", -- "full" or "text" - whether to extend highlights to full line width
   wrap = false, -- whether to wrap lines in preview
   show_no_newline = true, -- whether to show "\ No newline at end of file" markers
+  diff_style = "inline", -- "inline" or "side_by_side"
 }
 
 -- Performance thresholds
@@ -34,9 +35,11 @@ local PERF = {
 }
 
 ---@class file_history.DiffLine
----@field type "add"|"delete"|"context"|"header"|"no_newline"
+---@field type "add"|"delete"|"context"|"header"|"no_newline"|"file_header"|"side_by_side"
 ---@field text string
 ---@field line_num? number  -- original line number if applicable
+---@field left_text? string -- for side_by_side: left column text
+---@field right_text? string -- for side_by_side: right column text
 
 ---@class file_history.DiffStats
 ---@field hunks number
@@ -58,6 +61,16 @@ local function parse_hunk_header(header)
     new_start = tonumber(new_start) or 0,
     new_count = tonumber(new_count) or 1,
   }
+end
+
+---Strip the leading diff character (+, -, or space) from a line
+---@param line string
+---@return string
+local function strip_diff_prefix(line)
+  if #line > 0 then
+    return line:sub(2)
+  end
+  return line
 end
 
 ---Parse a unified diff and classify each line
@@ -92,17 +105,24 @@ function M.parse_diff(diff_text)
         diff_line.hunk_info = hunk_info
       end
       table.insert(result, diff_line)
-    -- Added lines
+    -- Added lines - strip the leading +
     elseif line:match("^%+") and not line:match("^%+%+%+") then
       diff_line.type = "add"
+      diff_line.text = strip_diff_prefix(line)
       stats.added = stats.added + 1
       table.insert(result, diff_line)
-    -- Deleted lines
+    -- Deleted lines - strip the leading -
     elseif line:match("^%-") and not line:match("^%-%-%- ") then
       diff_line.type = "delete"
+      diff_line.text = strip_diff_prefix(line)
       stats.deleted = stats.deleted + 1
       table.insert(result, diff_line)
-    -- Context lines (unchanged)
+    -- Context lines (unchanged) - strip the leading space
+    elseif line:match("^ ") then
+      diff_line.type = "context"
+      diff_line.text = strip_diff_prefix(line)
+      table.insert(result, diff_line)
+    -- Other lines (empty lines, etc.)
     else
       diff_line.type = "context"
       table.insert(result, diff_line)
@@ -195,6 +215,87 @@ local function filter_no_newline(parsed_lines)
   return filtered
 end
 
+---Convert inline diff to side-by-side format
+---@param parsed_lines file_history.DiffLine[]
+---@param win_width number
+---@return file_history.DiffLine[]
+local function convert_to_side_by_side(parsed_lines, win_width)
+  local result = {}
+  local col_width = math.floor((win_width - 3) / 2) -- -3 for separator " │ "
+  local separator = " │ "
+
+  local i = 1
+  while i <= #parsed_lines do
+    local line = parsed_lines[i]
+
+    if line.type == "header" or line.type == "file_header" or line.type == "no_newline" then
+      -- Headers span full width
+      table.insert(result, line)
+      i = i + 1
+    elseif line.type == "context" then
+      -- Context: same on both sides
+      local text = line.text or ""
+      local left = text:sub(1, col_width)
+      local right = text:sub(1, col_width)
+      -- Pad to column width
+      left = left .. string.rep(" ", col_width - vim.fn.strdisplaywidth(left))
+      right = right .. string.rep(" ", col_width - vim.fn.strdisplaywidth(right))
+      table.insert(result, {
+        type = "side_by_side",
+        text = left .. separator .. right,
+        left_type = "context",
+        right_type = "context",
+      })
+      i = i + 1
+    elseif line.type == "delete" then
+      -- Look ahead for matching add
+      local left_text = (line.text or ""):sub(1, col_width)
+      left_text = left_text .. string.rep(" ", col_width - vim.fn.strdisplaywidth(left_text))
+      
+      local right_text = ""
+      local right_type = "empty"
+      
+      -- Check if next line is an add (paired change)
+      if i + 1 <= #parsed_lines and parsed_lines[i + 1].type == "add" then
+        right_text = (parsed_lines[i + 1].text or ""):sub(1, col_width)
+        right_type = "add"
+        i = i + 1 -- skip the add line since we're pairing it
+      end
+      right_text = right_text .. string.rep(" ", col_width - vim.fn.strdisplaywidth(right_text))
+      
+      table.insert(result, {
+        type = "side_by_side",
+        text = left_text .. separator .. right_text,
+        left_type = "delete",
+        right_type = right_type,
+        col_width = col_width,
+        separator_pos = col_width,
+      })
+      i = i + 1
+    elseif line.type == "add" then
+      -- Add without preceding delete
+      local left_text = string.rep(" ", col_width)
+      local right_text = (line.text or ""):sub(1, col_width)
+      right_text = right_text .. string.rep(" ", col_width - vim.fn.strdisplaywidth(right_text))
+      
+      table.insert(result, {
+        type = "side_by_side",
+        text = left_text .. separator .. right_text,
+        left_type = "empty",
+        right_type = "add",
+        col_width = col_width,
+        separator_pos = col_width,
+      })
+      i = i + 1
+    else
+      table.insert(result, line)
+      i = i + 1
+    end
+  end
+
+  return result
+end
+
 ---Apply syntax highlighting to a diff buffer
 ---@param buf number
 ---@param parsed_lines file_history.DiffLine[]
@@ -219,56 +320,78 @@ function M.highlight_diff(buf, parsed_lines, win)
     local line_idx = i - 1  -- 0-indexed for nvim API
     local hl_group = nil
 
-    if diff_line.type == "add" then
-      hl_group = "DiffAdd"
-    elseif diff_line.type == "delete" then
-      hl_group = "DiffDelete"
-    elseif diff_line.type == "header" then
-      hl_group = "DiffChange"
-    elseif diff_line.type == "no_newline" then
-      hl_group = "FileHistoryNoNewline"
-    elseif diff_line.type == "file_header" then
-      hl_group = "DiffChange"  -- Use DiffChange for file header background
-    end
-    -- Note: "context" lines get no highlight (default text color)
+    -- Handle side-by-side lines with split highlighting
+    if diff_line.type == "side_by_side" then
+      local col_width = diff_line.col_width or 40
+      local sep_pos = diff_line.separator_pos or col_width
+      
+      -- Highlight left side
+      if diff_line.left_type == "delete" then
+        vim.api.nvim_buf_add_highlight(buf, ns, "DiffDelete", line_idx, 0, sep_pos)
+      elseif diff_line.left_type == "context" then
+        -- No highlight for context (default text color)
+      end
+      
+      -- Highlight right side (after separator)
+      local right_start = sep_pos + 3 -- " │ " is 3 chars wide visually but may be more bytes
+      if diff_line.right_type == "add" then
+        vim.api.nvim_buf_add_highlight(buf, ns, "DiffAdd", line_idx, right_start, -1)
+      elseif diff_line.right_type == "context" then
+        -- No highlight for context
+      end
+    else
+      -- Regular inline diff highlighting
+      if diff_line.type == "add" then
+        hl_group = "DiffAdd"
+      elseif diff_line.type == "delete" then
+        hl_group = "DiffDelete"
+      elseif diff_line.type == "header" then
+        hl_group = "DiffChange"
+      elseif diff_line.type == "no_newline" then
+        hl_group = "FileHistoryNoNewline"
+      elseif diff_line.type == "file_header" then
+        hl_group = "DiffChange"  -- Use DiffChange for file header background
+      end
+      -- Note: "context" lines get no highlight (default text color)
 
-    if hl_group then
-      if highlight_style == "full" and win_width then
-        -- Full-width highlight using virtual text overlay
-        -- First highlight the actual text
-        vim.api.nvim_buf_add_highlight(buf, ns, hl_group, line_idx, 0, -1)
+      if hl_group then
+        if highlight_style == "full" and win_width then
+          -- Full-width highlight using virtual text overlay
+          -- First highlight the actual text
+          vim.api.nvim_buf_add_highlight(buf, ns, hl_group, line_idx, 0, -1)
 
-        -- For file_header with icon, apply icon highlight separately to preserve fg color
-        if diff_line.type == "file_header" and diff_line.icon_hl and diff_line.icon_end then
-          -- Get the background color from the header highlight group
-          local header_bg = vim.api.nvim_get_hl(0, { name = hl_group })
+          -- For file_header with icon, apply icon highlight separately to preserve fg color
+          if diff_line.type == "file_header" and diff_line.icon_hl and diff_line.icon_end then
+            -- Get the background color from the header highlight group
+            local header_bg = vim.api.nvim_get_hl(0, { name = hl_group })
 
-          -- Create a combined highlight for the icon with its fg and header bg
-          local combined_hl = "FileHistoryIcon_" .. (diff_line.icon_hl or "Default")
-          local icon_fg = vim.api.nvim_get_hl(0, { name = diff_line.icon_hl or "Normal" })
-          vim.api.nvim_set_hl(0, combined_hl, {
-            fg = icon_fg.fg,
-            bg = header_bg.bg,
+            -- Create a combined highlight for the icon with its fg and header bg
+            local combined_hl = "FileHistoryIcon_" .. (diff_line.icon_hl or "Default")
+            local icon_fg = vim.api.nvim_get_hl(0, { name = diff_line.icon_hl or "Normal" })
+            vim.api.nvim_set_hl(0, combined_hl, {
+              fg = icon_fg.fg,
+              bg = header_bg.bg,
+            })
+
+            -- Apply the combined highlight to just the icon
+            vim.api.nvim_buf_add_highlight(buf, ns, combined_hl, line_idx, 2, diff_line.icon_end)
+          end
+
+          -- Then extend to fill the line with overlay (snacks.nvim approach)
+          local line_text = vim.api.nvim_buf_get_lines(buf, line_idx, line_idx + 1, false)[1] or ""
+          vim.api.nvim_buf_set_extmark(buf, ns, line_idx, #line_text, {
+            virt_text = { { string.rep(" ", 1000), hl_group } },
+            virt_text_pos = "overlay",
+            hl_mode = "replace",
           })
+        else
+          -- Text-only highlight (just the actual characters)
+          vim.api.nvim_buf_add_highlight(buf, ns, hl_group, line_idx, 0, -1)
 
-          -- Apply the combined highlight to just the icon
-          vim.api.nvim_buf_add_highlight(buf, ns, combined_hl, line_idx, 2, diff_line.icon_end)
-        end
-
-        -- Then extend to fill the line with overlay (snacks.nvim approach)
-        local line_text = vim.api.nvim_buf_get_lines(buf, line_idx, line_idx + 1, false)[1] or ""
-        vim.api.nvim_buf_set_extmark(buf, ns, line_idx, #line_text, {
-          virt_text = { { string.rep(" ", 1000), hl_group } },
-          virt_text_pos = "overlay",
-          hl_mode = "replace",
-        })
-      else
-        -- Text-only highlight (just the actual characters)
-        vim.api.nvim_buf_add_highlight(buf, ns, hl_group, line_idx, 0, -1)
-
-        -- For file_header with icon, apply icon highlight separately
-        if diff_line.type == "file_header" and diff_line.icon_hl and diff_line.icon_end then
-          vim.api.nvim_buf_add_highlight(buf, ns, diff_line.icon_hl, line_idx, 2, diff_line.icon_end)
+          -- For file_header with icon, apply icon highlight separately
+          if diff_line.type == "file_header" and diff_line.icon_hl and diff_line.icon_end then
+            vim.api.nvim_buf_add_highlight(buf, ns, diff_line.icon_hl, line_idx, 2, diff_line.icon_end)
+          end
         end
       end
     end
@@ -334,6 +457,13 @@ function M.render_diff(ctx, diff_text, filepath)
     end
   end
 
+  -- Convert to side-by-side if requested
+  local win = ctx.win
+  if M.opts.diff_style == "side_by_side" and win and vim.api.nvim_win_is_valid(win) then
+    local win_width = vim.api.nvim_win_get_width(win)
+    parsed = convert_to_side_by_side(parsed, win_width)
+  end
+
   local line_count = #parsed
 
   -- Handle very large diffs
@@ -360,9 +490,6 @@ function M.render_diff(ctx, diff_text, filepath)
   -- Reset preview and set content
   preview:reset()
   preview:set_lines(text_lines)
-
-  -- Get the preview window for full-width highlighting
-  local win = ctx.win
 
   -- Apply highlighting based on size
   if line_count <= PERF.MAX_LINES_INSTANT then
@@ -482,7 +609,7 @@ function M.get_diff_stats(diff_text)
 end
 
 ---Setup function to configure preview options
----@param opts? {header_style?: "text"|"raw"|"none"}
+---@param opts? {header_style?: "text"|"raw"|"none", diff_style?: "inline"|"side_by_side"}
 function M.setup(opts)
   M.opts = vim.tbl_deep_extend("force", M.opts, opts or {})
 end
