@@ -95,10 +95,20 @@ require("file_history").setup({
     -- "text": Only highlights actual text characters
     highlight_style = "full",
 
-    -- Line wrapping in preview window
+    -- Diff content line wrapping
     -- false (default): Use horizontal scrolling
     -- true: Wrap long lines
     wrap = false,
+
+    -- Filepath header wrapping
+    -- true (default): Long paths wrap to multiple lines
+    -- false: Truncate long paths
+    title_wrap = true,
+
+    -- Diff display style
+    -- "inline" (default): Traditional unified diff
+    -- "side_by_side": Two-column comparison
+    diff_style = "inline",
 
     -- Show "\ No newline at end of file" markers
     -- true (default): Display with custom highlight
