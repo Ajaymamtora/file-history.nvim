@@ -77,7 +77,7 @@ end
 ---@param diff_text string
 ---@return file_history.DiffLine[], file_history.DiffStats
 function M.parse_diff(diff_text)
-  local lines = vim.split(diff_text, "\n", { plain = true })
+  local lines = vim.split(diff_text, "\n", { plain = true, trimempty = true })
   local result = {}
   local stats = { hunks = 0, added = 0, deleted = 0 }
   local no_newline_markers = {} -- Collect these to move to end
