@@ -20,6 +20,14 @@ local defaults = {
   backup_dir = "~/.file-history-git",
   -- command line to execute git
   git_cmd = "git",
+  -- Diff options passed to vim.diff()
+  -- See :help vim.diff() for all available options
+  diff_opts = {
+    result_type = "unified",
+    ctxlen = 3,
+    algorithm = "histogram", -- Better for real-world diffs with scattered changes
+    linematch = 60, -- Second-stage diff for aligning lines within hunks
+  },
   -- Preview options
   preview = {
     header_style = "text", -- "text", "raw", or "none"
@@ -68,7 +76,7 @@ local function preview_file_history(ctx, data)
         return
       end
       local parent_lines = fh.get_file(ctx.item.file, ctx.item.hash)
-      ctx.item.diff = vim.diff(table.concat(data.buf_lines, '\n') .. '\n', table.concat(parent_lines, '\n') .. '\n', { result_type = 'unified', ctxlen = 3 })
+      ctx.item.diff = vim.diff(table.concat(data.buf_lines, '\n') .. '\n', table.concat(parent_lines, '\n') .. '\n', M.opts.diff_opts)
       ctx.item.log = false
     end
   end
@@ -89,7 +97,7 @@ local function preview_file_query(ctx, data)
     else
       local lines = fh.get_file(ctx.item.file, "HEAD")
       local parent_lines = fh.get_file(ctx.item.file, ctx.item.hash)
-      ctx.item.diff = vim.diff(table.concat(lines, '\n') .. '\n', table.concat(parent_lines, '\n') .. '\n', { result_type = 'unified', ctxlen = 3 })
+      ctx.item.diff = vim.diff(table.concat(lines, '\n') .. '\n', table.concat(parent_lines, '\n') .. '\n', M.opts.diff_opts)
       ctx.item.log = false
     end
   end

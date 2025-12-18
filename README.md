@@ -82,6 +82,15 @@ require("file_history").setup({
   -- Git command to use
   git_cmd = "git",
 
+  -- Diff generation options passed to vim.diff()
+  -- See :help vim.diff() for all available options
+  diff_opts = {
+    result_type = "unified",        -- Required for preview rendering
+    ctxlen = 3,                     -- Context lines around changes
+    algorithm = "histogram",        -- Better for real-world diffs with scattered changes
+    linematch = 60,                 -- Align lines within hunks (higher = more aggressive)
+  },
+
   -- Preview window options
   preview = {
     -- Header display style: "text", "raw", or "none"

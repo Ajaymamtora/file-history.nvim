@@ -43,6 +43,31 @@ describe("file_history.init", function()
     assert.is_truthy(cmd_text:match("highlight default link FileHistoryTime"))
   end)
 
+  it("setup uses histogram algorithm and linematch by default", function()
+    local mod = require("file_history")
+    mod.setup({ backup_dir = "~/.fh" })
+
+    -- Verify default diff_opts are set correctly
+    assert.equals("histogram", mod.opts.diff_opts.algorithm)
+    assert.equals(60, mod.opts.diff_opts.linematch)
+    assert.equals("unified", mod.opts.diff_opts.result_type)
+    assert.equals(3, mod.opts.diff_opts.ctxlen)
+  end)
+
+  it("allows overriding diff_opts in setup", function()
+    local mod = require("file_history")
+    mod.setup({
+      backup_dir = "~/.fh",
+      diff_opts = {
+        algorithm = "patience",
+        linematch = 100,
+      }
+    })
+
+    assert.equals("patience", mod.opts.diff_opts.algorithm)
+    assert.equals(100, mod.opts.diff_opts.linematch)
+  end)
+
   it("history() triggers snacks picker with expected title and keys", function()
     local mod = require("file_history")
     mod.setup({ backup_dir = "~/.fh" })

@@ -277,7 +277,8 @@ function M.new(opts)
     return { 0 }
   end
 
-  vim.diff = function(_, _, _)
+  vim.diff = function(a, b, opts)
+    state.last_diff_call = { a = a, b = b, opts = opts }
     return state.diff_result or ""
   end
 
