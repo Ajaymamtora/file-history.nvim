@@ -336,6 +336,28 @@ describe("Diff Display Scenarios", function()
       local last_line = parsed[#parsed]
       assert.equals("no_newline", last_line.type)
     end)
+    
+    it("handles CRLF line endings from Windows files", function()
+      -- Simulates content that had \r stripped during normalization
+      -- The parser should handle content without explicit CRLF markers
+      local diff = table.concat({
+        "@@ -1,2 +1,2 @@",
+        "-line with windows ending",
+        "+line with unix ending",
+        " context line",
+      }, "\n")
+      
+      local parsed, stats = preview.parse_diff(diff)
+      
+      -- Should parse correctly regardless of original line endings
+      assert.equals(1, stats.added)
+      assert.equals(1, stats.deleted)
+      
+      -- Verify the lines don't have stray \r characters
+      for _, line in ipairs(parsed) do
+        assert.is_nil(line.text:find("\r"), "Should not have carriage return in: " .. line.text)
+      end
+    end)
   end)
 
   -- ============================================================

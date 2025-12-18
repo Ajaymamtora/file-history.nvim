@@ -288,7 +288,8 @@ Later, you can easily find this checkpoint in the history.
 
 2. **Snapshot Retrieval**: When viewing history:
    - Uses git to retrieve all commits for the file
-   - Generates diffs using Neovim's built-in `vim.diff()`
+   - Normalizes line endings (handles Windows CRLF vs Unix LF)
+   - Generates diffs using Neovim's built-in `vim.diff()` with histogram algorithm
    - Renders with syntax highlighting in snacks.nvim picker
 
 3. **Storage**: Files are stored in a git repository, providing:
@@ -303,11 +304,12 @@ file-history.nvim/
 ├── lua/
 │   └── file_history/
 │       ├── init.lua           # Main plugin, picker configs
-│       ├── fh.lua            # Git operations and file handling
-│       ├── actions.lua       # Picker actions (revert, diff, etc.)
-│       └── preview.lua       # Diff parsing and highlighting
+│       ├── fh.lua             # Git operations and file handling
+│       ├── actions.lua        # Picker actions (revert, diff, etc.)
+│       ├── preview.lua        # Diff parsing and highlighting
+│       └── debug.lua          # Debug logging (when opts.debug = true)
 ├── plugin/
-│   └── file_history.lua      # Plugin initialization
+│   └── file_history.lua       # Plugin initialization
 └── README.md
 ```
 
