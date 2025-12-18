@@ -104,6 +104,11 @@ local function preview_file_history(ctx, data)
       local buf_content = table.concat(data.buf_lines, '\n') .. '\n'
       local parent_content = table.concat(parent_lines, '\n') .. '\n'
       
+      -- Normalize line endings: strip \r to handle Windows vs Unix line ending mismatch
+      -- This is critical when git history has CRLF but buffer has LF
+      buf_content = buf_content:gsub('\r', '')
+      parent_content = parent_content:gsub('\r', '')
+      
       dbg.trace("init", "Content lengths for diff", {
         buf_content_len = #buf_content,
         parent_content_len = #parent_content,
@@ -166,6 +171,10 @@ local function preview_file_query(ctx, data)
       
       local head_content = table.concat(lines, '\n') .. '\n'
       local parent_content = table.concat(parent_lines, '\n') .. '\n'
+      
+      -- Normalize line endings: strip \r to handle Windows vs Unix line ending mismatch
+      head_content = head_content:gsub('\r', '')
+      parent_content = parent_content:gsub('\r', '')
       
       local diff_opts = M.opts.diff_opts
       dbg.debug("init", "Calling vim.diff for query with options", diff_opts)
