@@ -9,6 +9,8 @@ if not has_snacks then
   error("This plugin requires folke/snacks.nvim")
 end
 
+local dbg = require("file_history.debug")
+
 local ns = vim.api.nvim_create_namespace("file_history.preview")
 
 -- Set up custom highlight group for "No newline at end of file" markers
@@ -496,9 +498,43 @@ end
 ---@param filepath? string Optional filepath to display in header
 function M.render_diff(ctx, diff_text, filepath)
   local preview = ctx.preview
+  
+  dbg.debug("preview", "render_diff called", {
+    filepath = filepath,
+    diff_text_length = diff_text and #diff_text or 0,
+    diff_text_is_nil = diff_text == nil,
+    diff_text_is_empty = diff_text == "",
+  })
+  
+  -- Handle nil or empty diff
+  if not diff_text or diff_text == "" then
+    dbg.warn("preview", "Empty or nil diff_text received", {
+      filepath = filepath,
+      diff_text_type = type(diff_text),
+    })
+    preview:reset()
+    preview:set_lines({ "", "  No changes detected", "" })
+    return
+  end
 
   -- Parse the diff
   local parsed, stats = M.parse_diff(diff_text)
+  
+  dbg.info("preview", "Diff parsed", {
+    filepath = filepath,
+    parsed_lines = #parsed,
+    stats = stats,
+    first_line_type = parsed[1] and parsed[1].type or "(none)",
+    types_summary = (function()
+      local counts = { add = 0, delete = 0, context = 0, header = 0 }
+      for _, line in ipairs(parsed) do
+        if counts[line.type] then
+          counts[line.type] = counts[line.type] + 1
+        end
+      end
+      return counts
+    end)(),
+  })
 
   -- Format headers based on user preference
   parsed = format_headers(parsed, stats)
@@ -526,6 +562,10 @@ function M.render_diff(ctx, diff_text, filepath)
 
   -- Handle very large diffs
   if line_count > PERF.MAX_LINES_TOTAL then
+    dbg.warn("preview", "Diff too large, truncating", {
+      line_count = line_count,
+      max_lines = PERF.MAX_LINES_TOTAL,
+    })
     preview:notify(
       string.format("Large diff (%d lines). Showing first %d lines.",
         line_count, PERF.MAX_LINES_TOTAL),
@@ -544,6 +584,11 @@ function M.render_diff(ctx, diff_text, filepath)
   for _, diff_line in ipairs(parsed) do
     table.insert(text_lines, diff_line.text)
   end
+  
+  dbg.debug("preview", "Setting preview content", {
+    text_lines_count = #text_lines,
+    line_count = line_count,
+  })
 
   -- Reset preview and set content
   preview:reset()

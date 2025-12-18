@@ -82,6 +82,9 @@ require("file_history").setup({
   -- Git command to use
   git_cmd = "git",
 
+  -- Enable debug logging (for troubleshooting)
+  debug = false,
+
   -- Diff generation options passed to vim.diff()
   -- See :help vim.diff() for all available options
   diff_opts = {
@@ -375,6 +378,41 @@ Check the backup directory has proper permissions:
 ```bash
 ls -la ~/.file-history-git
 ```
+
+### Debug Logging
+
+If diffs are not displaying correctly, enable debug logging to diagnose the issue:
+
+1. **Enable debug mode** in your setup:
+```lua
+require("file_history").setup({
+  debug = true,
+  -- ... other options
+})
+```
+
+2. **Reproduce the issue** by opening a file history preview
+
+3. **View the logs** with one of these commands:
+```vim
+:FileHistory debug        " Opens logs in a new buffer
+:FileHistory debug_copy   " Copies logs to clipboard
+:FileHistory debug_clear  " Clears the log buffer
+```
+
+4. **Programmatic access** (for scripts/debugging):
+```lua
+local fh = require("file_history")
+local logs = fh.get_debug_logs()  -- Get logs as string
+fh.show_debug_logs()              -- Open in buffer
+fh.copy_debug_logs()              -- Copy to clipboard
+```
+
+The logs include:
+- Git command execution and results
+- File content retrieval (line counts, first/last lines)
+- Diff generation (input lengths, output length, preview)
+- Preview rendering (parsed line counts, type distribution)
 
 ## Development
 

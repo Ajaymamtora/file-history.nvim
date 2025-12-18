@@ -1,5 +1,7 @@
 local M = {}
 
+local dbg = require("file_history.debug")
+
 local function make_dir(directory)
   if vim.fn.isdirectory(directory) == 0 then
     vim.fn.mkdir(directory, "p")
@@ -35,6 +37,11 @@ local FileHistory = {
     else
       self.hostname = vim.fn.hostname()
     end
+    dbg.debug("fh", "FileHistory initialized", {
+      basedir = self.basedir,
+      git_cmd = self.git_cmd,
+      hostname = self.hostname,
+    })
   end,
 
   _build_git_command = function (self, args)
@@ -45,6 +52,8 @@ local FileHistory = {
 
   _git_command = function (self, args)
     local command = self:_build_git_command(args)
+    dbg.trace("fh", "Executing git command", { command = command })
+    
     local proc = {
       job_id = 0,
       exit_code = 0,
@@ -70,6 +79,23 @@ local FileHistory = {
       end,
     })
     vim.fn.jobwait({ proc.job_id })
+    
+    dbg.trace("fh", "Git command completed", {
+      args = args,
+      exit_code = proc.exit_code,
+      stdout_chunks = #proc.stdout,
+      stderr_chunks = #proc.stderr,
+    })
+    
+    if proc.exit_code ~= 0 then
+      local stderr_flat = vim.iter(proc.stderr):flatten():totable()
+      dbg.warn("fh", "Git command failed", {
+        args = args,
+        exit_code = proc.exit_code,
+        stderr = table.concat(stderr_flat, "\n"),
+      })
+    end
+    
     return proc
   end,
 
@@ -202,15 +228,44 @@ M.file_history_query = function(after, before)
 end
 
 M.get_file = function(filename, hash)
+  dbg.debug("fh", "M.get_file called", { filename = filename, hash = hash })
+  
   local proc = FileHistory:get_file(filename, hash)
   local lines = vim.iter(proc.stdout):flatten():totable()
-  return trim_trailing_empty(lines)
+  local result = trim_trailing_empty(lines)
+  
+  dbg.info("fh", "M.get_file result", {
+    filename = filename,
+    hash = hash,
+    raw_stdout_chunks = #proc.stdout,
+    flattened_lines = #lines,
+    trimmed_lines = #result,
+    first_line = result[1],
+    last_line = result[#result],
+    exit_code = proc.exit_code,
+  })
+  
+  if #result == 0 then
+    dbg.warn("fh", "M.get_file returned empty!", { filename = filename, hash = hash })
+  end
+  
+  return result
 end
 
 M.get_log = function(filename, hash)
+  dbg.debug("fh", "M.get_log called", { filename = filename, hash = hash })
+  
   local proc = FileHistory:get_log(filename, hash)
   local lines = vim.iter(proc.stdout):flatten():totable()
-  return trim_trailing_empty(lines)
+  local result = trim_trailing_empty(lines)
+  
+  dbg.debug("fh", "M.get_log result", {
+    filename = filename,
+    hash = hash,
+    result_lines = #result,
+  })
+  
+  return result
 end
 
 M.delete_file = function(filename)
