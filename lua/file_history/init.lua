@@ -488,7 +488,7 @@ function M.setup(opts)
 
   vim.api.nvim_create_user_command("FileHistory", commands, { 
     nargs = 1,
-    complete = function()
+    complete = function(ArgLead, CmdLine, CursorPos)
       return { "history", "files", "backup", "query", "debug", "debug_copy", "debug_clear" }
     end,
   })
