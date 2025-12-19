@@ -88,12 +88,21 @@ local FileHistory = {
     })
     
     if proc.exit_code ~= 0 then
-      local stderr_flat = vim.iter(proc.stderr):flatten():totable()
-      dbg.warn("fh", "Git command failed", {
-        args = args,
-        exit_code = proc.exit_code,
-        stderr = table.concat(stderr_flat, "\n"),
-      })
+      -- diff-index --quiet returns exit code 1 when there ARE changes (expected)
+      -- Only warn for actual failures, not expected non-zero codes
+      local is_diff_index = args[1] == "diff-index"
+      
+      if is_diff_index and proc.exit_code == 1 then
+        -- This is expected: exit code 1 means file has changes
+        dbg.debug("fh", "diff-index detected changes", { args = args })
+      else
+        local stderr_flat = vim.iter(proc.stderr):flatten():totable()
+        dbg.warn("fh", "Git command failed", {
+          args = args,
+          exit_code = proc.exit_code,
+          stderr = table.concat(stderr_flat, "\n"),
+        })
+      end
     end
     
     return proc
