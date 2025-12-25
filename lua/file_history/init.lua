@@ -42,8 +42,11 @@ local defaults = {
     -- Actions
     open_buffer_diff_tab = "<M-d>",
     open_file_diff_tab = "<M-d>",
+    open_snapshot_tab = "<M-o>",
     revert_to_selected = "<C-r>",
     toggle_incremental = "<M-l>",
+    yank_additions = "<M-a>",
+    yank_deletions = "<M-x>",
     delete_history = "<M-d>",
     purge_history = "<M-p>",
   },
@@ -275,8 +278,10 @@ local function file_history_picker(data)
     input = {
       keys = {
         [M.opts.key_bindings.open_buffer_diff_tab] = { "open_buffer_diff_tab", desc = "Open diff in new tab", mode = { "n", "i" } },
-        [M.opts.key_bindings.revert_to_selected] = { "revert_to_selected", desc = "Revert current buffer to selected commit", mode = { "n", "i" } },
+        [M.opts.key_bindings.open_snapshot_tab] = { "open_snapshot_tab", desc = "Open snapshot in new tab", mode = { "n", "i" } },
         [M.opts.key_bindings.toggle_incremental] = { "toggle_incremental", desc = "Toggle incremental diff mode", mode = { "n", "i" } },
+        [M.opts.key_bindings.yank_additions] = { "yank_additions", desc = "Yank all additions from diff", mode = { "n", "i" } },
+        [M.opts.key_bindings.yank_deletions] = { "yank_deletions", desc = "Yank all deletions from diff", mode = { "n", "i" } },
       }
     }
   }
@@ -295,17 +300,24 @@ local function file_history_picker(data)
     open_buffer_diff_tab = function(_, item)
       actions.open_buffer_diff_tab(item, data)
     end,
-    revert_to_selected = function(picker, item)
-      actions.revert_to_selected(item, data)
-      picker:close()
+    open_snapshot_tab = function(_, item)
+      actions.open_selected_hash_in_new_tab(item, data)
     end,
     toggle_incremental = function(picker, _)
       data.log = not data.log
       picker.preview:refresh(picker)
-    end
+    end,
+    yank_additions = function(_, item)
+      actions.yank_additions(item, data)
+    end,
+    yank_deletions = function(_, item)
+      actions.yank_deletions(item, data)
+    end,
   }
-  fhp.confirm = function(_, item)
-    actions.open_selected_hash_in_new_tab(item, data)
+  -- Enter key reverts buffer to selected snapshot
+  fhp.confirm = function(picker, item)
+    actions.revert_to_selected(item, data)
+    picker:close()
   end
   return fhp
 end
@@ -408,7 +420,10 @@ function M.query()
           input = {
             keys = {
               [M.opts.key_bindings.open_file_diff_tab] = { "open_file_diff_tab", desc = "Open diff in new tab", mode = { "n", "i" } },
+              [M.opts.key_bindings.open_snapshot_tab] = { "open_snapshot_tab", desc = "Open snapshot in new tab", mode = { "n", "i" } },
               [M.opts.key_bindings.toggle_incremental] = { "toggle_incremental", desc = "Toggle incremental diff mode", mode = { "n", "i" } },
+              [M.opts.key_bindings.yank_additions] = { "yank_additions", desc = "Yank all additions from diff", mode = { "n", "i" } },
+              [M.opts.key_bindings.yank_deletions] = { "yank_deletions", desc = "Yank all deletions from diff", mode = { "n", "i" } },
             }
           }
       }
@@ -433,10 +448,19 @@ function M.query()
         open_file_diff_tab = function(_, item)
           actions.open_file_diff_tab(item)
         end,
+        open_snapshot_tab = function(_, item)
+          actions.open_selected_file_hash_in_new_tab(item)
+        end,
         toggle_incremental = function(picker, _)
           data.log = not data.log
           picker.preview:refresh(picker)
-        end
+        end,
+        yank_additions = function(_, item)
+          actions.yank_additions(item, nil)
+        end,
+        yank_deletions = function(_, item)
+          actions.yank_deletions(item, nil)
+        end,
       }
       fhp.confirm = function(_, item)
         actions.open_selected_file_hash_in_new_tab(item)

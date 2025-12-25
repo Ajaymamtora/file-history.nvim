@@ -6,6 +6,113 @@ end
 
 local fh_actions = {}
 
+-- Helper to extract additions or deletions from a diff
+-- @param diff_text string The unified diff text
+-- @param extract_type "add"|"delete" Which lines to extract
+-- @return string[] Lines without the diff prefix
+local function extract_diff_lines(diff_text, extract_type)
+  if not diff_text or diff_text == "" then
+    return {}
+  end
+
+  local lines = vim.split(diff_text, "\n", { plain = true })
+  local result = {}
+  local pattern = extract_type == "add" and "^%+" or "^%-"
+  local header_pattern = extract_type == "add" and "^%+%+%+" or "^%-%-%-"
+
+  for _, line in ipairs(lines) do
+    -- Match the line type but exclude header lines (--- or +++)
+    if line:match(pattern) and not line:match(header_pattern) then
+      -- Strip the leading +/- character
+      table.insert(result, line:sub(2))
+    end
+  end
+
+  return result
+end
+
+-- Helper to generate diff for file_history picker (current buffer vs snapshot)
+local function generate_file_history_diff(item, data)
+  if not data.buf_lines then
+    return nil
+  end
+
+  local parent_lines = fh.get_file(item.file, item.hash)
+  local buf_content = table.concat(data.buf_lines, '\n') .. '\n'
+  local parent_content = table.concat(parent_lines, '\n') .. '\n'
+
+  -- Normalize line endings
+  buf_content = buf_content:gsub('\r', '')
+  parent_content = parent_content:gsub('\r', '')
+
+  return vim.diff(buf_content, parent_content, {
+    result_type = "unified",
+    ctxlen = 0,
+  })
+end
+
+-- Helper to generate diff for query picker (HEAD vs snapshot)
+local function generate_query_diff(item)
+  local head_lines = fh.get_file(item.file, "HEAD")
+  local parent_lines = fh.get_file(item.file, item.hash)
+
+  local head_content = table.concat(head_lines, '\n') .. '\n'
+  local parent_content = table.concat(parent_lines, '\n') .. '\n'
+
+  -- Normalize line endings
+  head_content = head_content:gsub('\r', '')
+  parent_content = parent_content:gsub('\r', '')
+
+  return vim.diff(head_content, parent_content, {
+    result_type = "unified",
+    ctxlen = 0,
+  })
+end
+
+fh_actions.yank_additions = function(item, data)
+  local diff_text
+  if data and data.buf_lines then
+    -- file_history picker context
+    diff_text = generate_file_history_diff(item, data)
+  else
+    -- query picker context
+    diff_text = generate_query_diff(item)
+  end
+
+  local additions = extract_diff_lines(diff_text, "add")
+  if #additions == 0 then
+    vim.notify("[FileHistory] No additions to yank", vim.log.levels.INFO)
+    return
+  end
+
+  local text = table.concat(additions, "\n")
+  vim.fn.setreg("+", text)
+  vim.fn.setreg('"', text)
+  vim.notify(string.format("[FileHistory] Yanked %d addition(s)", #additions), vim.log.levels.INFO)
+end
+
+fh_actions.yank_deletions = function(item, data)
+  local diff_text
+  if data and data.buf_lines then
+    -- file_history picker context
+    diff_text = generate_file_history_diff(item, data)
+  else
+    -- query picker context
+    diff_text = generate_query_diff(item)
+  end
+
+  local deletions = extract_diff_lines(diff_text, "delete")
+  if #deletions == 0 then
+    vim.notify("[FileHistory] No deletions to yank", vim.log.levels.INFO)
+    return
+  end
+
+  local text = table.concat(deletions, "\n")
+  vim.fn.setreg("+", text)
+  vim.fn.setreg('"', text)
+  vim.notify(string.format("[FileHistory] Yanked %d deletion(s)", #deletions), vim.log.levels.INFO)
+end
+
 fh_actions.revert_to_selected = function(item, data)
   if not data.buf then
     return

@@ -135,4 +135,69 @@ describe("file_history.actions", function()
     assert.is_truthy(cmds:match("vsplit"))
     assert.is_truthy(cmds:match("windo diffthis"))
   end)
+
+  it("yank_additions extracts and yanks added lines from diff", function()
+    local fh = require("file_history.fh")
+    fh.setup({ backup_dir = "~/.fh", hostname = "myhost" })
+
+    -- Simulate file_history picker context: current buffer vs snapshot
+    local buf = vim.api.nvim_get_current_buf()
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "line1", "line2", "new line" })
+
+    -- Queue git show result for snapshot (without "new line")
+    vim._queue_job_result({ exit_code = 0, stdout = { { "line1", "line2" } }, stderr = {} })
+
+    local data = { buf = buf, buf_lines = { "line1", "line2", "new line" } }
+    actions.yank_additions({ file = "/tmp/a", hash = "H" }, data)
+
+    -- Check that the addition was yanked
+    local yanked = vim.fn.getreg("+")
+    assert.is_truthy(yanked:match("new line"))
+  end)
+
+  it("yank_deletions extracts and yanks deleted lines from diff", function()
+    local fh = require("file_history.fh")
+    fh.setup({ backup_dir = "~/.fh", hostname = "myhost" })
+
+    -- Simulate file_history picker context: current buffer vs snapshot
+    local buf = vim.api.nvim_get_current_buf()
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "line1" })
+
+    -- Queue git show result for snapshot (with "deleted line")
+    vim._queue_job_result({ exit_code = 0, stdout = { { "line1", "deleted line" } }, stderr = {} })
+
+    local data = { buf = buf, buf_lines = { "line1" } }
+    actions.yank_deletions({ file = "/tmp/a", hash = "H" }, data)
+
+    -- Check that the deletion was yanked
+    local yanked = vim.fn.getreg("+")
+    assert.is_truthy(yanked:match("deleted line"))
+  end)
+
+  it("yank_additions works in query picker context (no data.buf_lines)", function()
+    local fh = require("file_history.fh")
+    fh.setup({ backup_dir = "~/.fh", hostname = "myhost" })
+
+    -- Queue git show result for HEAD
+    vim._queue_job_result({ exit_code = 0, stdout = { { "line1", "line2", "new" } }, stderr = {} })
+    -- Queue git show result for snapshot
+    vim._queue_job_result({ exit_code = 0, stdout = { { "line1", "line2" } }, stderr = {} })
+
+    actions.yank_additions({ file = "/tmp/a", hash = "H" }, nil)
+
+    local yanked = vim.fn.getreg("+")
+    assert.is_truthy(yanked:match("new"))
+  end)
+
+  it("yank_deletions notifies when no deletions found", function()
+    local fh = require("file_history.fh")
+    fh.setup({ backup_dir = "~/.fh", hostname = "myhost" })
+
+    -- Queue identical content for HEAD and snapshot
+    vim._queue_job_result({ exit_code = 0, stdout = { { "same" } }, stderr = {} })
+    vim._queue_job_result({ exit_code = 0, stdout = { { "same" } }, stderr = {} })
+
+    -- Should not error, just notify
+    actions.yank_deletions({ file = "/tmp/a", hash = "H" }, nil)
+  end)
 end)

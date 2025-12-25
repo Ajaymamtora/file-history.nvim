@@ -92,7 +92,9 @@ describe("file_history.init", function()
     assert.equals("FileHistory history", picker.last_pick.win.title)
 
     assert.is_table(picker.last_pick.win.input.keys[mod.opts.key_bindings.open_buffer_diff_tab])
-    assert.is_table(picker.last_pick.win.input.keys[mod.opts.key_bindings.revert_to_selected])
+    assert.is_table(picker.last_pick.win.input.keys[mod.opts.key_bindings.open_snapshot_tab])
+    assert.is_table(picker.last_pick.win.input.keys[mod.opts.key_bindings.yank_additions])
+    assert.is_table(picker.last_pick.win.input.keys[mod.opts.key_bindings.yank_deletions])
 
     local items = picker.last_pick.finder({})
     assert.equals(1, #items)
@@ -100,10 +102,13 @@ describe("file_history.init", function()
     assert.equals("/tmp/a.lua", items[1].file)
     assert.equals("tag", items[1].tag)
 
-    -- invoking confirm delegates to actions.open_selected_hash_in_new_tab; validate side effect
+    -- invoking confirm now reverts buffer to selected snapshot content
     vim._queue_job_result({ exit_code = 0, stdout = { { "snap" } }, stderr = {} })
-    picker.last_pick.confirm(nil, items[1])
-    assert.is_truthy(table.concat(vim._state.cmd_history, "\n"):match("tabnew"))
+    local mock_picker = { close = function() end }
+    picker.last_pick.confirm(mock_picker, items[1])
+    -- Buffer should now have the snapshot content
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    assert.equals("snap", lines[1])
   end)
 
   it("files() picker disables preview when path missing", function()

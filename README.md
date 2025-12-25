@@ -64,9 +64,11 @@ use {
 
 | Key | Action | Mode |
 |-----|--------|------|
-| `<CR>` | Open selected snapshot in new tab | Normal |
+| `<CR>` | Revert current buffer to selected snapshot | Normal |
+| `<M-o>` | Open selected snapshot in new tab | Normal/Insert |
 | `<M-d>` | Open diff in new tab | Normal/Insert |
-| `<C-r>` | Revert current file to selected snapshot | Normal/Insert |
+| `<M-a>` | Yank all additions from diff | Normal/Insert |
+| `<M-x>` | Yank all deletions from diff | Normal/Insert |
 | `<M-l>` | Toggle incremental diff mode | Normal/Insert |
 | `<M-p>` | Purge file history (files picker) | Normal/Insert |
 
@@ -132,8 +134,10 @@ require("file_history").setup({
   key_bindings = {
     open_buffer_diff_tab = "<M-d>",
     open_file_diff_tab = "<M-d>",
-    revert_to_selected = "<C-r>",
+    open_snapshot_tab = "<M-o>",
     toggle_incremental = "<M-l>",
+    yank_additions = "<M-a>",
+    yank_deletions = "<M-x>",
     delete_history = "<M-d>",
     purge_history = "<M-p>",
   },
@@ -249,8 +253,9 @@ These thresholds can be adjusted in `lua/file_history/preview.lua` if needed.
 1. Edit your file normally - snapshots are created automatically on save
 2. Press `:FileHistory history` to see all versions
 3. Navigate through snapshots to see what changed
-4. Press `<CR>` to view a snapshot in a new tab, or `<M-d>` for a diff view
-5. Use `<C-r>` if you need to revert to a previous version
+4. Press `<CR>` to revert to a snapshot, or `<M-o>` to view it in a new tab
+5. Use `<M-d>` for a side-by-side diff view
+6. Use `<M-a>` to yank all additions or `<M-x>` to yank all deletions from the diff
 
 ### Creating Checkpoints
 

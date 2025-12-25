@@ -277,9 +277,100 @@ function M.new(opts)
     return { 0 }
   end
 
+  -- Register storage for setreg/getreg
+  state.registers = {}
+
+  vim.fn.setreg = function(reg, content)
+    state.registers[reg] = content
+  end
+
+  vim.fn.getreg = function(reg)
+    return state.registers[reg] or ""
+  end
+
+  -- Simple diff implementation for testing
+  -- Returns a unified diff format string
   vim.diff = function(a, b, opts)
     state.last_diff_call = { a = a, b = b, opts = opts }
-    return state.diff_result or ""
+    -- If diff_result is set, use it (for backward compatibility)
+    if state.diff_result then
+      return state.diff_result
+    end
+    -- Simple line-by-line diff implementation
+    local a_lines = {}
+    for line in (a .. "\n"):gmatch("([^\n]*)\n") do
+      table.insert(a_lines, line)
+    end
+    local b_lines = {}
+    for line in (b .. "\n"):gmatch("([^\n]*)\n") do
+      table.insert(b_lines, line)
+    end
+    -- Remove trailing empty lines from parsing
+    while #a_lines > 0 and a_lines[#a_lines] == "" do
+      table.remove(a_lines)
+    end
+    while #b_lines > 0 and b_lines[#b_lines] == "" do
+      table.remove(b_lines)
+    end
+
+    -- Build a simple diff output
+    local result = {}
+    local a_set = {}
+    for _, line in ipairs(a_lines) do
+      a_set[line] = (a_set[line] or 0) + 1
+    end
+    local b_set = {}
+    for _, line in ipairs(b_lines) do
+      b_set[line] = (b_set[line] or 0) + 1
+    end
+
+    -- Find additions (in a but not in b)
+    local a_copy = {}
+    for k, v in pairs(a_set) do a_copy[k] = v end
+    for _, line in ipairs(b_lines) do
+      if a_copy[line] and a_copy[line] > 0 then
+        a_copy[line] = a_copy[line] - 1
+      end
+    end
+    for line, count in pairs(a_copy) do
+      for _ = 1, count do
+        table.insert(result, "+" .. line)
+      end
+    end
+
+    -- Find deletions (in b but not in a)
+    local b_copy = {}
+    for k, v in pairs(b_set) do b_copy[k] = v end
+    for _, line in ipairs(a_lines) do
+      if b_copy[line] and b_copy[line] > 0 then
+        b_copy[line] = b_copy[line] - 1
+      end
+    end
+    for line, count in pairs(b_copy) do
+      for _ = 1, count do
+        table.insert(result, "-" .. line)
+      end
+    end
+
+    return table.concat(result, "\n")
+  end
+
+  -- Log levels
+  vim.log = {
+    levels = {
+      DEBUG = 0,
+      ERROR = 4,
+      INFO = 2,
+      OFF = 5,
+      TRACE = 0,
+      WARN = 3,
+    }
+  }
+
+  -- Notify stub
+  state.notifications = {}
+  vim.notify = function(msg, level)
+    table.insert(state.notifications, { msg = msg, level = level })
   end
 
   vim.ui.input = function(_, cb)
