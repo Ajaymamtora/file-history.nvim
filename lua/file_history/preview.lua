@@ -739,10 +739,15 @@ function M.render_diff(ctx, diff_text, filepath, source)
     vim.bo[ctx.buf].modifiable = false
   end
 
-  -- Set window options
-  if win and vim.api.nvim_win_is_valid(win) then
-    vim.wo[win].wrap = M.opts.wrap
-  end
+  -- Set window options via snacks preview API (scheduled to ensure window is ready)
+  vim.schedule(function()
+    if preview and preview.wo then
+      preview:wo({ wrap = M.opts.wrap, showbreak = "NONE" })
+    elseif win and vim.api.nvim_win_is_valid(win) then
+      vim.wo[win].wrap = M.opts.wrap
+      vim.api.nvim_set_option_value("showbreak", "NONE", { scope = "local", win = win })
+    end
+  end)
 end
 
 ---Enhanced diff stats for picker items (optional)
