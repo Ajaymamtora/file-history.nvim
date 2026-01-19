@@ -100,7 +100,7 @@ describe("file_history.init", function()
     assert.equals(1, #items)
     assert.equals("HASH", items[1].hash)
     assert.equals("/tmp/a.lua", items[1].file)
-    assert.equals("tag", items[1].tag)
+    assert.equals("tag", items[1].label)
 
     -- invoking confirm now reverts buffer to selected snapshot content
     vim._queue_job_result({ exit_code = 0, stdout = { { "snap" } }, stderr = {} })
