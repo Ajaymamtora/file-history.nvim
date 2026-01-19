@@ -7,39 +7,50 @@ local fh = require("file_history.fh")
 local actions = require("file_history.actions")
 local preview_module = require("file_history.preview")
 local dbg = require("file_history.debug")
+local providers = require("file_history.providers")
 
--- Set default values for highlighting groups
 vim.cmd("highlight default link FileHistoryTime Number")
 vim.cmd("highlight default link FileHistoryDate Function")
 vim.cmd("highlight default link FileHistoryFile Keyword")
 vim.cmd("highlight default link FileHistoryTag Comment")
+vim.cmd("highlight default link FileHistorySourceGit GitSignsAdd")
+vim.cmd("highlight default link FileHistorySourceUndo DiagnosticInfo")
 
 local M = {}
 
 local defaults = {
-  -- This is the location where it will create your file history repository
   backup_dir = "~/.file-history-git",
-  -- command line to execute git
   git_cmd = "git",
-  -- Enable debug logging
   debug = false,
-  -- Diff options passed to vim.diff()
-  -- See :help vim.diff() for all available options
+  sources = {
+    git = true,
+    undo = true,
+  },
+  display = {
+    show_source = true,
+    source_icons = {
+      git = "",
+      undo = "",
+    },
+  },
+  undo = {
+    include_branches = true,
+    save_points_only = false,
+    max_entries = 100,
+  },
   diff_opts = {
     result_type = "unified",
     ctxlen = 3,
-    algorithm = "histogram", -- Better for real-world diffs with scattered changes
-    linematch = 60, -- Second-stage diff for aligning lines within hunks
+    algorithm = "histogram",
+    linematch = 60,
   },
-  -- Preview options
   preview = {
-    header_style = "text", -- "text", "raw", or "none"
-    highlight_style = "full", -- "full" or "text" - whether to extend highlights to full line width
-    wrap = false, -- whether to wrap lines in preview window
-    show_no_newline = true, -- whether to show "\ No newline at end of file" markers
+    header_style = "text",
+    highlight_style = "full",
+    wrap = false,
+    show_no_newline = true,
   },
   key_bindings = {
-    -- Actions
     open_buffer_diff_tab = "<M-d>",
     open_file_diff_tab = "<M-d>",
     open_snapshot_tab = "<M-o>",
@@ -74,7 +85,9 @@ end
 
 local function preview_file_history(ctx, data)
   dbg.trace("init", "preview_file_history called", {
+    item_source = ctx.item and ctx.item.source,
     item_hash = ctx.item and ctx.item.hash,
+    item_seq = ctx.item and ctx.item.seq,
     item_file = ctx.item and ctx.item.file,
     data_log = data.log,
     ctx_item_log = ctx.item and ctx.item.log,
@@ -82,67 +95,64 @@ local function preview_file_history(ctx, data)
 
   if data.log ~= ctx.item.log then
     if data.log == true then
-      dbg.debug("init", "Fetching git log for display")
-      ctx.item.diff = table.concat(fh.get_log(ctx.item.file, ctx.item.hash), '\n')
+      if ctx.item.source == "git" then
+        dbg.debug("init", "Fetching git log for display")
+        ctx.item.diff = table.concat(fh.get_log(ctx.item.file, ctx.item.hash), '\n')
+      else
+        ctx.item.diff = "Log view not available for undo history"
+      end
       ctx.item.log = true
     else
       if not data.buf_lines then
         dbg.warn("init", "No buffer lines available for diff")
         return
       end
-      
+
       dbg.debug("init", "Generating diff", {
+        source = ctx.item.source,
         buf_lines_count = #data.buf_lines,
         file = ctx.item.file,
-        hash = ctx.item.hash,
       })
-      
-      local parent_lines = fh.get_file(ctx.item.file, ctx.item.hash)
-      dbg.debug("init", "Retrieved parent file", {
+
+      local parent_lines = providers.get_content(ctx.item)
+      dbg.debug("init", "Retrieved parent content", {
         parent_lines_count = #parent_lines,
         parent_first_line = parent_lines[1],
         parent_last_line = parent_lines[#parent_lines],
       })
-      
+
       local buf_content = table.concat(data.buf_lines, '\n') .. '\n'
       local parent_content = table.concat(parent_lines, '\n') .. '\n'
-      
-      -- Normalize line endings: strip \r to handle Windows vs Unix line ending mismatch
-      -- This is critical when git history has CRLF but buffer has LF
+
       buf_content = buf_content:gsub('\r', '')
       parent_content = parent_content:gsub('\r', '')
-      
+
       dbg.trace("init", "Content lengths for diff", {
         buf_content_len = #buf_content,
         parent_content_len = #parent_content,
-        buf_first_100 = buf_content:sub(1, 100),
-        parent_first_100 = parent_content:sub(1, 100),
       })
-      
+
       local diff_opts = M.opts.diff_opts
       dbg.debug("init", "Calling vim.diff with options", diff_opts)
-      
+
       ctx.item.diff = vim.diff(buf_content, parent_content, diff_opts)
-      
+
       dbg.info("init", "Diff generated", {
         diff_length = #(ctx.item.diff or ""),
         diff_lines = ctx.item.diff and #vim.split(ctx.item.diff, "\n") or 0,
-        diff_preview = ctx.item.diff and ctx.item.diff:sub(1, 200) or "(empty)",
         is_empty = ctx.item.diff == "" or ctx.item.diff == nil,
       })
-      
+
       ctx.item.log = false
     end
   else
     dbg.trace("init", "Using cached diff", { cached_log = ctx.item.log })
   end
 
-  -- Get filepath for header
   local bufname = vim.api.nvim_buf_get_name(data.buf)
   local filepath = bufname ~= "" and bufname or "[No Name]"
 
   dbg.debug("init", "Rendering diff preview", { filepath = filepath })
-  -- Use custom preview rendering with highlighting
   preview_module.render_diff(ctx, ctx.item.diff, filepath)
 end
 
@@ -202,24 +212,25 @@ local function preview_file_query(ctx, data)
   preview_module.render_diff(ctx, ctx.item.diff, filepath)
 end
 
-local function file_history_finder(_)
-  local entries = vim.iter(fh.file_history()):flatten():totable()
-  local results = {}
-  for _, entry in pairs(entries) do
-    if entry and entry ~= "" then
-      local fields = split(entry, '\x09')
-      local result = {
-        time = fields[1],
-        date = fields[2],
-        hash = fields[3],
-        file = fields[4],
-        tag = fields[5] or ''
-      }
-      result.text = result.tag .. ' ' .. result.time .. ' ' .. result.date
-      table.insert(results, result)
-    end
+local function file_history_finder(data)
+  local sources = {}
+  if M.opts.sources.git then
+    table.insert(sources, "git")
   end
-  return results
+  if M.opts.sources.undo then
+    table.insert(sources, "undo")
+  end
+
+  local buf = data.buf
+  local filepath = vim.api.nvim_buf_get_name(buf)
+
+  local items = providers.get_history(sources, buf, filepath)
+
+  for _, item in ipairs(items) do
+    item.time = item.time_ago
+  end
+
+  return items
 end
 
 local function file_history_files_finder(_)
@@ -285,23 +296,44 @@ local function file_history_picker(data)
       }
     }
   }
-  fhp.finder = file_history_finder
+  fhp.finder = function() return file_history_finder(data) end
   fhp.format = function(item)
     local ret = {}
+
+    if M.opts.display.show_source then
+      local icon = M.opts.display.source_icons[item.source] or "?"
+      local hl = item.source == "git" and "FileHistorySourceGit" or "FileHistorySourceUndo"
+      ret[#ret + 1] = { icon .. " ", hl }
+    end
+
+    if item.source == "undo" and item.branch_depth and item.branch_depth > 0 then
+      ret[#ret + 1] = { string.rep("│ ", item.branch_depth), "Comment" }
+    end
+
     ret[#ret + 1] = { str_prepare(item.time or "", 16), "FileHistoryTime" }
     ret[#ret + 1] = { " " }
     ret[#ret + 1] = { str_prepare(item.date or "", 32), "FileHistoryDate" }
     ret[#ret + 1] = { " " }
-    ret[#ret + 1] = { item.tag or "", "FileHistoryTag" }
+    ret[#ret + 1] = { item.label or item.tag or "", "FileHistoryTag" }
     return ret
   end
   fhp.preview = function(ctx) preview_file_history(ctx, data) end
   fhp.actions = {
     open_buffer_diff_tab = function(_, item)
-      actions.open_buffer_diff_tab(item, data)
+      if item.source == "git" then
+        actions.open_buffer_diff_tab(item, data)
+      else
+        local content = providers.get_content(item)
+        actions.open_undo_diff_tab(item, data, content)
+      end
     end,
     open_snapshot_tab = function(_, item)
-      actions.open_selected_hash_in_new_tab(item, data)
+      if item.source == "git" then
+        actions.open_selected_hash_in_new_tab(item, data)
+      else
+        local content = providers.get_content(item)
+        actions.open_undo_snapshot_tab(item, data, content)
+      end
     end,
     toggle_incremental = function(picker, _)
       data.log = not data.log
@@ -314,9 +346,12 @@ local function file_history_picker(data)
       actions.yank_deletions(item, data)
     end,
   }
-  -- Enter key reverts buffer to selected snapshot
   fhp.confirm = function(picker, item)
-    actions.revert_to_selected(item, data)
+    if item.source == "undo" then
+      providers.revert(item, data.buf)
+    else
+      actions.revert_to_selected(item, data)
+    end
     picker:close()
   end
   return fhp
@@ -495,29 +530,38 @@ end
 
 function M.setup(opts)
   M.opts = vim.tbl_deep_extend("force", defaults, opts or {})
-  
-  -- Setup debug module first
+
   dbg.setup({ enabled = M.opts.debug })
   dbg.info("init", "FileHistory setup starting", {
     debug = M.opts.debug,
     backup_dir = M.opts.backup_dir,
+    sources = M.opts.sources,
     diff_opts = M.opts.diff_opts,
   })
-  
+
   fh.setup(opts)
 
-  -- Setup preview module with options
+  local git_provider = require("file_history.providers.git")
+  local undo_provider = require("file_history.providers.undo")
+
+  providers.register("git", git_provider)
+  providers.register("undo", undo_provider)
+
+  undo_provider.setup(M.opts.undo or {})
+
   preview_module.setup(M.opts.preview or {})
   dbg.debug("init", "Preview module configured", M.opts.preview)
 
-  vim.api.nvim_create_user_command("FileHistory", commands, { 
+  vim.api.nvim_create_user_command("FileHistory", commands, {
     nargs = 1,
     complete = function(ArgLead, CmdLine, CursorPos)
       return { "history", "files", "backup", "query", "debug", "debug_copy", "debug_clear" }
     end,
   })
-  
-  dbg.info("init", "FileHistory setup complete")
+
+  dbg.info("init", "FileHistory setup complete", {
+    registered_providers = providers.get_provider_names(),
+  })
 end
 
 -- Expose debug functions for programmatic access
