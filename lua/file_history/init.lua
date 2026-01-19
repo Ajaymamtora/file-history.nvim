@@ -87,6 +87,91 @@ local function split(str, sep)
   return result
 end
 
+---Parse unified diff hunk header to extract line range information
+---@param header string Hunk header line like "@@ -10,5 +12,7 @@ function foo()"
+---@return {old_start: number, old_count: number, new_start: number, new_count: number}?
+local function parse_hunk_header(header)
+  local old_start, old_count, new_start, new_count = header:match("@@ %-(%d+),?(%d*) %+(%d+),?(%d*) @@")
+  if not old_start then
+    return nil
+  end
+  return {
+    old_start = tonumber(old_start) or 0,
+    old_count = old_count ~= "" and tonumber(old_count) or 1,
+    new_start = tonumber(new_start) or 0,
+    new_count = new_count ~= "" and tonumber(new_count) or 1,
+  }
+end
+
+---Check if a hunk overlaps with a given line range
+---@param hunk_start number Start line of the hunk
+---@param hunk_count number Number of lines in the hunk
+---@param range_start number Start line of the range
+---@param range_end number End line of the range
+---@return boolean
+local function hunk_overlaps_range(hunk_start, hunk_count, range_start, range_end)
+  local hunk_end = hunk_start + math.max(0, hunk_count - 1)
+  return not (hunk_end < range_start or hunk_start > range_end)
+end
+
+---Check if any hunk in a diff affects the given line range
+---@param diff_text string The unified diff text
+---@param range_start number Start line of the range (1-indexed)
+---@param range_end number End line of the range (1-indexed)
+---@return boolean
+local function diff_affects_range(diff_text, range_start, range_end)
+  if not diff_text or diff_text == "" then
+    return false
+  end
+  for line in diff_text:gmatch("[^\n]+") do
+    if line:match("^@@") then
+      local hunk = parse_hunk_header(line)
+      if hunk and hunk_overlaps_range(hunk.new_start, hunk.new_count, range_start, range_end) then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+---Filter a unified diff to only include hunks affecting a line range
+---@param diff_text string The unified diff text
+---@param range_start number Start line of the range (1-indexed)
+---@param range_end number End line of the range (1-indexed)
+---@return string Filtered diff text
+local function filter_diff_to_range(diff_text, range_start, range_end)
+  if not diff_text or diff_text == "" then
+    return ""
+  end
+
+  local result = {}
+  local current_hunk = {}
+  local include_current_hunk = false
+
+  for line in diff_text:gmatch("[^\n]+") do
+    if line:match("^@@") then
+      if include_current_hunk and #current_hunk > 0 then
+        for _, hunk_line in ipairs(current_hunk) do
+          table.insert(result, hunk_line)
+        end
+      end
+      current_hunk = { line }
+      local hunk = parse_hunk_header(line)
+      include_current_hunk = hunk and hunk_overlaps_range(hunk.new_start, hunk.new_count, range_start, range_end)
+    elseif #current_hunk > 0 then
+      table.insert(current_hunk, line)
+    end
+  end
+
+  if include_current_hunk and #current_hunk > 0 then
+    for _, hunk_line in ipairs(current_hunk) do
+      table.insert(result, hunk_line)
+    end
+  end
+
+  return table.concat(result, "\n")
+end
+
 local function preview_file_history(ctx, data)
   dbg.trace("init", "preview_file_history called", {
     item_source = ctx.item and ctx.item.source,
@@ -158,6 +243,43 @@ local function preview_file_history(ctx, data)
 
   dbg.debug("init", "Rendering diff preview", { filepath = filepath })
   preview_module.render_diff(ctx, ctx.item.diff, filepath, ctx.item.source)
+end
+
+local function preview_file_history_range(ctx, data)
+  local range_start = data.range.start_line
+  local range_end = data.range.end_line
+
+  if data.log ~= ctx.item.log then
+    if data.log == true then
+      if ctx.item.source == "git" then
+        ctx.item.diff = table.concat(fh.get_log(ctx.item.file, ctx.item.hash), '\n')
+      else
+        ctx.item.diff = "Log view not available for undo history"
+      end
+      ctx.item.log = true
+    else
+      local diff = ctx.item.cached_diff
+      if not diff then
+        if not data.buf_lines then
+          return
+        end
+        local parent_lines = providers.get_content(ctx.item)
+        local buf_content = table.concat(data.buf_lines, '\n') .. '\n'
+        local parent_content = table.concat(parent_lines, '\n') .. '\n'
+        buf_content = buf_content:gsub('\r', '')
+        parent_content = parent_content:gsub('\r', '')
+        diff = vim.diff(buf_content, parent_content, M.opts.diff_opts)
+      end
+      ctx.item.diff = filter_diff_to_range(diff, range_start, range_end)
+      ctx.item.log = false
+    end
+  end
+
+  local bufname = vim.api.nvim_buf_get_name(data.buf)
+  local filepath = bufname ~= "" and bufname or "[No Name]"
+  local range_indicator = string.format(" [L%d-%d]", range_start, range_end)
+
+  preview_module.render_diff(ctx, ctx.item.diff, filepath .. range_indicator, ctx.item.source)
 end
 
 local function preview_file_query(ctx, data)
@@ -234,6 +356,43 @@ local function file_history_finder(data)
   end
 
   return items
+end
+
+local function file_history_range_finder(data)
+  local sources = {}
+  if M.opts.sources.git then
+    table.insert(sources, "git")
+  end
+  if M.opts.sources.undo then
+    table.insert(sources, "undo")
+  end
+
+  local buf = data.buf
+  local filepath = vim.api.nvim_buf_get_name(buf)
+  local range_start = data.range.start_line
+  local range_end = data.range.end_line
+
+  local all_items = providers.get_history(sources, buf, filepath)
+  local filtered_items = {}
+
+  local buf_content = table.concat(data.buf_lines, '\n') .. '\n'
+  buf_content = buf_content:gsub('\r', '')
+
+  for _, item in ipairs(all_items) do
+    local parent_lines = providers.get_content(item)
+    local parent_content = table.concat(parent_lines, '\n') .. '\n'
+    parent_content = parent_content:gsub('\r', '')
+
+    local diff = vim.diff(buf_content, parent_content, M.opts.diff_opts)
+
+    if diff_affects_range(diff, range_start, range_end) then
+      item.time = item.time_ago
+      item.cached_diff = diff
+      table.insert(filtered_items, item)
+    end
+  end
+
+  return filtered_items
 end
 
 local function file_history_files_finder(_)
@@ -360,6 +519,84 @@ local function file_history_picker(data)
   return fhp
 end
 
+local function file_history_range_picker(data)
+  local fhp = {}
+  local range_start = data.range.start_line
+  local range_end = data.range.end_line
+
+  fhp.win = {
+    title = string.format("FileHistory [L%d-%d]", range_start, range_end),
+    input = {
+      keys = {
+        [M.opts.key_bindings.open_buffer_diff_tab] = { "open_buffer_diff_tab", desc = "Open diff in new tab", mode = { "n", "i" } },
+        [M.opts.key_bindings.open_snapshot_tab] = { "open_snapshot_tab", desc = "Open snapshot in new tab", mode = { "n", "i" } },
+        [M.opts.key_bindings.toggle_incremental] = { "toggle_incremental", desc = "Toggle incremental diff mode", mode = { "n", "i" } },
+        [M.opts.key_bindings.yank_additions] = { "yank_additions", desc = "Yank all additions from diff", mode = { "n", "i" } },
+        [M.opts.key_bindings.yank_deletions] = { "yank_deletions", desc = "Yank all deletions from diff", mode = { "n", "i" } },
+      }
+    }
+  }
+  fhp.finder = function() return file_history_range_finder(data) end
+  fhp.format = function(item)
+    local ret = {}
+
+    if M.opts.display.show_source then
+      local icon = M.opts.display.source_icons[item.source] or "?"
+      local hl = item.source == "git" and "FileHistorySourceGit" or "FileHistorySourceUndo"
+      ret[#ret + 1] = { icon .. " ", hl }
+    end
+
+    if item.source == "undo" and item.branch_depth and item.branch_depth > 0 then
+      ret[#ret + 1] = { string.rep("│ ", item.branch_depth), "Comment" }
+    end
+
+    ret[#ret + 1] = { str_prepare(item.time or "", 16), "FileHistoryTime" }
+    ret[#ret + 1] = { " " }
+    ret[#ret + 1] = { str_prepare(item.date or "", 32), "FileHistoryDate" }
+    ret[#ret + 1] = { " " }
+    ret[#ret + 1] = { item.label or item.tag or "", "FileHistoryTag" }
+    return ret
+  end
+  fhp.preview = function(ctx) preview_file_history_range(ctx, data) end
+  fhp.actions = {
+    open_buffer_diff_tab = function(_, item)
+      if item.source == "git" then
+        actions.open_buffer_diff_tab(item, data)
+      else
+        local content = providers.get_content(item)
+        actions.open_undo_diff_tab(item, data, content)
+      end
+    end,
+    open_snapshot_tab = function(_, item)
+      if item.source == "git" then
+        actions.open_selected_hash_in_new_tab(item, data)
+      else
+        local content = providers.get_content(item)
+        actions.open_undo_snapshot_tab(item, data, content)
+      end
+    end,
+    toggle_incremental = function(picker, _)
+      data.log = not data.log
+      picker.preview:refresh(picker)
+    end,
+    yank_additions = function(_, item)
+      actions.yank_additions(item, data)
+    end,
+    yank_deletions = function(_, item)
+      actions.yank_deletions(item, data)
+    end,
+  }
+  fhp.confirm = function(picker, item)
+    if item.source == "undo" then
+      providers.revert(item, data.buf)
+    else
+      actions.revert_to_selected(item, data)
+    end
+    picker:close()
+  end
+  return fhp
+end
+
 local function file_history_files_picker()
   local fhp = {}
   fhp.win = {
@@ -430,9 +667,43 @@ local function prepare_picker_data()
   return data
 end
 
+local function prepare_picker_data_range(start_line, end_line)
+  local data = {
+    buf = nil,
+    buf_lines = nil,
+    log = false,
+    range = {
+      start_line = start_line,
+      end_line = end_line,
+    },
+  }
+  data.buf = vim.api.nvim_get_current_buf()
+  data.buf_lines = vim.api.nvim_buf_get_lines(data.buf, 0, -1, true)
+  return data
+end
+
 function M.history()
   local data = prepare_picker_data()
   snacks_picker.pick(file_history_picker(data))
+end
+
+function M.history_range(opts)
+  opts = opts or {}
+
+  local start_line = opts.start_line or vim.fn.line("'<")
+  local end_line = opts.end_line or vim.fn.line("'>")
+
+  if start_line > end_line then
+    start_line, end_line = end_line, start_line
+  end
+
+  if start_line <= 0 or end_line <= 0 then
+    vim.notify("[FileHistory] No visual selection", vim.log.levels.WARN)
+    return
+  end
+
+  local data = prepare_picker_data_range(start_line, end_line)
+  snacks_picker.pick(file_history_range_picker(data))
 end
 
 function M.files()
@@ -512,6 +783,8 @@ end
 local function commands(args)
   if args.fargs[1] == "history" then
     M.history()
+  elseif args.fargs[1] == "history_range" then
+    M.history_range()
   elseif args.fargs[1] == "files" then
     M.files()
   elseif args.fargs[1] == "backup" then
@@ -519,13 +792,10 @@ local function commands(args)
   elseif args.fargs[1] == "query" then
     M.query()
   elseif args.fargs[1] == "debug" then
-    -- Show debug logs in a new buffer
     dbg.show_logs()
   elseif args.fargs[1] == "debug_copy" then
-    -- Copy debug logs to clipboard
     dbg.copy_logs()
   elseif args.fargs[1] == "debug_clear" then
-    -- Clear debug logs
     dbg.clear_logs()
     vim.notify("[FileHistory] Debug logs cleared", vim.log.levels.INFO)
   end
@@ -561,8 +831,9 @@ function M.setup(opts)
 
   vim.api.nvim_create_user_command("FileHistory", commands, {
     nargs = 1,
+    range = true,
     complete = function(ArgLead, CmdLine, CursorPos)
-      return { "history", "files", "backup", "query", "debug", "debug_copy", "debug_clear" }
+      return { "history", "history_range", "files", "backup", "query", "debug", "debug_copy", "debug_clear" }
     end,
   })
 
@@ -576,5 +847,11 @@ M.show_debug_logs = dbg.show_logs
 M.copy_debug_logs = dbg.copy_logs
 M.get_debug_logs = dbg.get_logs
 M.clear_debug_logs = dbg.clear_logs
+
+-- Expose range utilities for testing
+M.parse_hunk_header = parse_hunk_header
+M.diff_affects_range = diff_affects_range
+M.filter_diff_to_range = filter_diff_to_range
+M.prepare_picker_data_range = prepare_picker_data_range
 
 return M

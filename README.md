@@ -56,9 +56,26 @@ use {
 | Command | Description |
 |---------|-------------|
 | `:FileHistory history` | Show snapshot history for the current file |
+| `:FileHistory history_range` | Show history for visually selected lines |
 | `:FileHistory files` | Browse all tracked files |
 | `:FileHistory backup` | Create a tagged snapshot of the current file |
 | `:FileHistory query` | Search snapshots by date range |
+
+### Visual Range History
+
+Select lines in visual mode and view history for just that section:
+
+1. Enter visual mode and select lines (`V` or `v`)
+2. Run `:'<,'>FileHistory history_range`
+
+The picker will show only history items where changes affected the selected lines, and the preview will highlight only the relevant hunks.
+
+**Suggested Mapping:**
+```lua
+vim.keymap.set("v", "<leader>fh", function()
+  vim.cmd("'<,'>FileHistory history_range")
+end, { desc = "File history for selection" })
+```
 
 ### Default Key Bindings (in picker)
 
