@@ -6,6 +6,10 @@ end
 
 local fh_actions = {}
 
+local function get_providers()
+  return require("file_history.providers")
+end
+
 -- Helper to extract additions or deletions from a diff
 -- @param diff_text string The unified diff text
 -- @param extract_type "add"|"delete" Which lines to extract
@@ -37,11 +41,17 @@ local function generate_file_history_diff(item, data)
     return nil
   end
 
-  local parent_lines = fh.get_file(item.file, item.hash)
+  local parent_lines
+  if item.source == "undo" then
+    local providers = get_providers()
+    parent_lines = providers.get_content(item)
+  else
+    parent_lines = fh.get_file(item.file, item.hash)
+  end
+
   local buf_content = table.concat(data.buf_lines, '\n') .. '\n'
   local parent_content = table.concat(parent_lines, '\n') .. '\n'
 
-  -- Normalize line endings
   buf_content = buf_content:gsub('\r', '')
   parent_content = parent_content:gsub('\r', '')
 
@@ -191,6 +201,44 @@ fh_actions.open_buffer_diff_tab = function(item, data)
   vim.api.nvim_win_set_buf(vim.api.nvim_get_current_win(), data.buf)
   -- Diffthis!
   vim.cmd('windo diffthis')
+end
+
+fh_actions.open_undo_diff_tab = function(item, data, content)
+  if not data.buf then
+    return
+  end
+  local filetype = vim.api.nvim_buf_get_option(data.buf, 'filetype')
+  local pbuf = vim.api.nvim_create_buf(true, true)
+  vim.api.nvim_buf_set_option(pbuf, 'filetype', filetype)
+  vim.api.nvim_buf_set_lines(pbuf, 0, -1, true, content)
+  vim.api.nvim_buf_set_option(pbuf, 'modifiable', false)
+  vim.api.nvim_buf_set_name(pbuf, "undo#" .. item.seq .. ":" .. (item.file or "[buffer]"))
+
+  vim.cmd('tabnew')
+  local nwin = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_buf(nwin, pbuf)
+  vim.cmd('vsplit')
+  vim.api.nvim_win_set_buf(vim.api.nvim_get_current_win(), data.buf)
+  vim.cmd('windo diffthis')
+end
+
+fh_actions.open_undo_snapshot_tab = function(item, data, content)
+  local filetype = "text"
+  if data and data.buf then
+    filetype = vim.api.nvim_buf_get_option(data.buf, 'filetype')
+  elseif item.file then
+    filetype = pfiletype.detect(item.file, {})
+  end
+
+  vim.cmd('tabnew')
+  local nwin = vim.api.nvim_get_current_win()
+  local nbufnr = vim.api.nvim_create_buf(true, true)
+  local bufname = "undo#" .. item.seq .. ":" .. (item.file or "[buffer]")
+  vim.api.nvim_buf_set_name(nbufnr, bufname)
+  vim.api.nvim_buf_set_option(nbufnr, 'filetype', filetype)
+  vim.api.nvim_buf_set_lines(nbufnr, 0, -1, true, content)
+  vim.api.nvim_buf_set_option(nbufnr, 'modifiable', false)
+  vim.api.nvim_win_set_buf(nwin, nbufnr)
 end
 
 -- Open a diff between two versions of a file
