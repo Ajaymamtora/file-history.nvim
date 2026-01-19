@@ -32,6 +32,10 @@ local defaults = {
       git = "",
       undo = "",
     },
+    source_labels = {
+      git = "Git History",
+      undo = "Vim Undo",
+    },
   },
   undo = {
     include_branches = true,
@@ -153,7 +157,7 @@ local function preview_file_history(ctx, data)
   local filepath = bufname ~= "" and bufname or "[No Name]"
 
   dbg.debug("init", "Rendering diff preview", { filepath = filepath })
-  preview_module.render_diff(ctx, ctx.item.diff, filepath)
+  preview_module.render_diff(ctx, ctx.item.diff, filepath, ctx.item.source)
 end
 
 local function preview_file_query(ctx, data)
@@ -173,33 +177,33 @@ local function preview_file_query(ctx, data)
         file = ctx.item.file,
         hash = ctx.item.hash,
       })
-      
+
       local lines = fh.get_file(ctx.item.file, "HEAD")
       local parent_lines = fh.get_file(ctx.item.file, ctx.item.hash)
-      
+
       dbg.debug("init", "Retrieved files for query diff", {
         head_lines_count = #lines,
         parent_lines_count = #parent_lines,
       })
-      
+
       local head_content = table.concat(lines, '\n') .. '\n'
       local parent_content = table.concat(parent_lines, '\n') .. '\n'
-      
+
       -- Normalize line endings: strip \r to handle Windows vs Unix line ending mismatch
       head_content = head_content:gsub('\r', '')
       parent_content = parent_content:gsub('\r', '')
-      
+
       local diff_opts = M.opts.diff_opts
       dbg.debug("init", "Calling vim.diff for query with options", diff_opts)
-      
+
       ctx.item.diff = vim.diff(head_content, parent_content, diff_opts)
-      
+
       dbg.info("init", "Query diff generated", {
         diff_length = #(ctx.item.diff or ""),
         diff_lines = ctx.item.diff and #vim.split(ctx.item.diff, "\n") or 0,
         is_empty = ctx.item.diff == "" or ctx.item.diff == nil,
       })
-      
+
       ctx.item.log = false
     end
   end
@@ -208,8 +212,7 @@ local function preview_file_query(ctx, data)
   local filepath = ctx.item.file
 
   dbg.debug("init", "Rendering query diff preview", { filepath = filepath })
-  -- Use custom preview rendering with highlighting
-  preview_module.render_diff(ctx, ctx.item.diff, filepath)
+  preview_module.render_diff(ctx, ctx.item.diff, filepath, ctx.item.source)
 end
 
 local function file_history_finder(data)
@@ -451,16 +454,16 @@ function M.query()
     vim.ui.input({ prompt = "Before: " }, function(before)
       local fhp = {}
       fhp.win = {
-          title = "FileHistory query",
-          input = {
-            keys = {
-              [M.opts.key_bindings.open_file_diff_tab] = { "open_file_diff_tab", desc = "Open diff in new tab", mode = { "n", "i" } },
-              [M.opts.key_bindings.open_snapshot_tab] = { "open_snapshot_tab", desc = "Open snapshot in new tab", mode = { "n", "i" } },
-              [M.opts.key_bindings.toggle_incremental] = { "toggle_incremental", desc = "Toggle incremental diff mode", mode = { "n", "i" } },
-              [M.opts.key_bindings.yank_additions] = { "yank_additions", desc = "Yank all additions from diff", mode = { "n", "i" } },
-              [M.opts.key_bindings.yank_deletions] = { "yank_deletions", desc = "Yank all deletions from diff", mode = { "n", "i" } },
-            }
+        title = "FileHistory query",
+        input = {
+          keys = {
+            [M.opts.key_bindings.open_file_diff_tab] = { "open_file_diff_tab", desc = "Open diff in new tab", mode = { "n", "i" } },
+            [M.opts.key_bindings.open_snapshot_tab] = { "open_snapshot_tab", desc = "Open snapshot in new tab", mode = { "n", "i" } },
+            [M.opts.key_bindings.toggle_incremental] = { "toggle_incremental", desc = "Toggle incremental diff mode", mode = { "n", "i" } },
+            [M.opts.key_bindings.yank_additions] = { "yank_additions", desc = "Yank all additions from diff", mode = { "n", "i" } },
+            [M.opts.key_bindings.yank_deletions] = { "yank_deletions", desc = "Yank all deletions from diff", mode = { "n", "i" } },
           }
+        }
       }
       fhp.items = file_history_query_finder(after, before)
       fhp.format = function(item)
@@ -549,8 +552,12 @@ function M.setup(opts)
 
   undo_provider.setup(M.opts.undo or {})
 
-  preview_module.setup(M.opts.preview or {})
-  dbg.debug("init", "Preview module configured", M.opts.preview)
+  local preview_opts = vim.tbl_deep_extend("force", M.opts.preview or {}, {
+    source_icons = M.opts.display.source_icons,
+    source_labels = M.opts.display.source_labels,
+  })
+  preview_module.setup(preview_opts)
+  dbg.debug("init", "Preview module configured", preview_opts)
 
   vim.api.nvim_create_user_command("FileHistory", commands, {
     nargs = 1,

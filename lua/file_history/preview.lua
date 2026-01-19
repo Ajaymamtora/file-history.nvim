@@ -21,20 +21,28 @@ vim.api.nvim_set_hl(0, "FileHistoryNoNewline", {
 
 -- Default options
 M.opts = {
-  header_style = "text", -- "text", "raw", or "none"
-  highlight_style = "full", -- "full" or "text" - whether to extend highlights to full line width
-  wrap = false, -- whether to wrap diff content lines
-  title_wrap = true, -- whether to wrap filepath in header
-  show_no_newline = true, -- whether to show "\ No newline at end of file" markers
-  diff_style = "inline", -- "inline" or "side_by_side"
+  header_style = "text",
+  highlight_style = "full",
+  wrap = false,
+  title_wrap = true,
+  show_no_newline = true,
+  diff_style = "inline",
+  source_icons = {
+    git = "󰊢",
+    undo = "",
+  },
+  source_labels = {
+    git = "Git History",
+    undo = "Vim Undo",
+  },
 }
 
 -- Performance thresholds
 local PERF = {
-  MAX_LINES_INSTANT = 500,    -- Render instantly if diff is smaller
-  MAX_LINES_DEFERRED = 2000,  -- Defer rendering if between 500-2000
-  MAX_LINES_TOTAL = 5000,     -- Show warning if larger than this
-  DEFER_MS = 50,              -- Delay for deferred rendering
+  MAX_LINES_INSTANT = 500,   -- Render instantly if diff is smaller
+  MAX_LINES_DEFERRED = 2000, -- Defer rendering if between 500-2000
+  MAX_LINES_TOTAL = 5000,    -- Show warning if larger than this
+  DEFER_MS = 50,             -- Delay for deferred rendering
 }
 
 ---@class file_history.DiffLine
@@ -92,14 +100,14 @@ function M.parse_diff(diff_text)
     if line:match("^\\ No newline at end of file") then
       diff_line.type = "no_newline"
       table.insert(no_newline_markers, diff_line)
-    -- Git patch headers and metadata
+      -- Git patch headers and metadata
     elseif line:match("^diff ")
         or line:match("^index ")
         or line:match("^%-%-%-")
         or line:match("^%+%+%+") then
       diff_line.type = "header"
       table.insert(result, diff_line)
-    -- Hunk headers
+      -- Hunk headers
     elseif line:match("^@@") then
       diff_line.type = "header"
       stats.hunks = stats.hunks + 1
@@ -108,24 +116,24 @@ function M.parse_diff(diff_text)
         diff_line.hunk_info = hunk_info
       end
       table.insert(result, diff_line)
-    -- Added lines - strip the leading +
+      -- Added lines - strip the leading +
     elseif line:match("^%+") and not line:match("^%+%+%+") then
       diff_line.type = "add"
       diff_line.text = strip_diff_prefix(line)
       stats.added = stats.added + 1
       table.insert(result, diff_line)
-    -- Deleted lines - strip the leading -
+      -- Deleted lines - strip the leading -
     elseif line:match("^%-") and not line:match("^%-%-%- ") then
       diff_line.type = "delete"
       diff_line.text = strip_diff_prefix(line)
       stats.deleted = stats.deleted + 1
       table.insert(result, diff_line)
-    -- Context lines (unchanged) - strip the leading space
+      -- Context lines (unchanged) - strip the leading space
     elseif line:match("^ ") then
       diff_line.type = "context"
       diff_line.text = strip_diff_prefix(line)
       table.insert(result, diff_line)
-    -- Other lines (empty lines, etc.)
+      -- Other lines (empty lines, etc.)
     else
       diff_line.type = "context"
       table.insert(result, diff_line)
@@ -167,7 +175,7 @@ local function format_headers(parsed_lines, stats)
       if line.type == "header" and not line.text:match("^@@") then
         -- Skip this header line
         i = i + 1
-      -- Convert hunk headers to readable format
+        -- Convert hunk headers to readable format
       elseif line.type == "header" and line.text:match("^@@") then
         -- Add a summary line instead
         local summary = {}
@@ -254,10 +262,10 @@ local function convert_to_side_by_side(parsed_lines, win_width)
       -- Look ahead for matching add
       local left_text = (line.text or ""):sub(1, col_width)
       left_text = left_text .. string.rep(" ", col_width - vim.fn.strdisplaywidth(left_text))
-      
+
       local right_text = ""
       local right_type = "empty"
-      
+
       -- Check if next line is an add (paired change)
       if i + 1 <= #parsed_lines and parsed_lines[i + 1].type == "add" then
         right_text = (parsed_lines[i + 1].text or ""):sub(1, col_width)
@@ -265,7 +273,7 @@ local function convert_to_side_by_side(parsed_lines, win_width)
         i = i + 1 -- skip the add line since we're pairing it
       end
       right_text = right_text .. string.rep(" ", col_width - vim.fn.strdisplaywidth(right_text))
-      
+
       table.insert(result, {
         type = "side_by_side",
         text = left_text .. separator .. right_text,
@@ -280,7 +288,7 @@ local function convert_to_side_by_side(parsed_lines, win_width)
       local left_text = string.rep(" ", col_width)
       local right_text = (line.text or ""):sub(1, col_width)
       right_text = right_text .. string.rep(" ", col_width - vim.fn.strdisplaywidth(right_text))
-      
+
       table.insert(result, {
         type = "side_by_side",
         text = left_text .. separator .. right_text,
@@ -320,21 +328,21 @@ function M.highlight_diff(buf, parsed_lines, win)
   end
 
   for i, diff_line in ipairs(parsed_lines) do
-    local line_idx = i - 1  -- 0-indexed for nvim API
+    local line_idx = i - 1 -- 0-indexed for nvim API
     local hl_group = nil
 
     -- Handle side-by-side lines with split highlighting
     if diff_line.type == "side_by_side" then
       local col_width = diff_line.col_width or 40
       local sep_pos = diff_line.separator_pos or col_width
-      
+
       -- Highlight left side
       if diff_line.left_type == "delete" then
         vim.api.nvim_buf_add_highlight(buf, ns, "DiffDelete", line_idx, 0, sep_pos)
       elseif diff_line.left_type == "context" then
         -- No highlight for context (default text color)
       end
-      
+
       -- Highlight right side (after separator)
       local right_start = sep_pos + 3 -- " │ " is 3 chars wide visually but may be more bytes
       if diff_line.right_type == "add" then
@@ -353,7 +361,9 @@ function M.highlight_diff(buf, parsed_lines, win)
       elseif diff_line.type == "no_newline" then
         hl_group = "FileHistoryNoNewline"
       elseif diff_line.type == "file_header" then
-        hl_group = "DiffChange"  -- Use DiffChange for file header background
+        hl_group = "DiffChange"
+      elseif diff_line.type == "source_indicator" then
+        hl_group = "DiffChange"
       end
       -- Note: "context" lines get no highlight (default text color)
 
@@ -365,10 +375,8 @@ function M.highlight_diff(buf, parsed_lines, win)
 
           -- For file_header with icon, apply icon highlight separately to preserve fg color
           if diff_line.type == "file_header" and diff_line.icon_hl and diff_line.icon_end then
-            -- Get the background color from the header highlight group
             local header_bg = vim.api.nvim_get_hl(0, { name = hl_group })
 
-            -- Create a combined highlight for the icon with its fg and header bg
             local combined_hl = "FileHistoryIcon_" .. (diff_line.icon_hl or "Default")
             local icon_fg = vim.api.nvim_get_hl(0, { name = diff_line.icon_hl or "Normal" })
             vim.api.nvim_set_hl(0, combined_hl, {
@@ -376,8 +384,21 @@ function M.highlight_diff(buf, parsed_lines, win)
               bg = header_bg.bg,
             })
 
-            -- Apply the combined highlight to just the icon
             vim.api.nvim_buf_add_highlight(buf, ns, combined_hl, line_idx, 2, diff_line.icon_end)
+          end
+
+          if diff_line.type == "source_indicator" and diff_line.source then
+            local header_bg = vim.api.nvim_get_hl(0, { name = "DiffChange" })
+            local source_hl_name = diff_line.source == "git" and "FileHistorySourceGit" or "FileHistorySourceUndo"
+            local source_fg = vim.api.nvim_get_hl(0, { name = source_hl_name })
+
+            local combined_hl = "FileHistorySource_" .. diff_line.source
+            vim.api.nvim_set_hl(0, combined_hl, {
+              fg = source_fg.fg,
+              bg = header_bg.bg,
+            })
+
+            vim.api.nvim_buf_add_highlight(buf, ns, combined_hl, line_idx, 0, -1)
           end
 
           -- Then extend to fill the line with overlay (snacks.nvim approach)
@@ -415,8 +436,9 @@ end
 ---Create file header block with optional wrapping
 ---@param filepath string The filepath to display
 ---@param win_width? number Window width for wrapping calculation
+---@param source? "git"|"undo" The history source
 ---@return file_history.DiffLine[] Header lines
-local function create_file_header(filepath, win_width)
+local function create_file_header(filepath, win_width, source)
   local header = {}
 
   -- Get icon for the file
@@ -433,7 +455,7 @@ local function create_file_header(filepath, win_width)
 
   -- Handle title wrapping if enabled and needed
   if M.opts.title_wrap and win_width and win_width > 0 then
-    local available_width = win_width - 4  -- Leave some margin
+    local available_width = win_width - 4 -- Leave some margin
     local path_width = vim.fn.strdisplaywidth(filepath)
     local total_width = prefix_width + path_width
 
@@ -445,7 +467,7 @@ local function create_file_header(filepath, win_width)
       -- Split filepath into chunks
       local remaining = filepath
       local is_first = true
-      local indent = string.rep(" ", prefix_width)  -- Indent for continuation lines
+      local indent = string.rep(" ", prefix_width) -- Indent for continuation lines
 
       while #remaining > 0 do
         local chunk_width = is_first and first_line_path_chars or (available_width - prefix_width)
@@ -486,6 +508,18 @@ local function create_file_header(filepath, win_width)
   -- Bottom padding
   table.insert(header, { type = "file_header", text = "" })
 
+  if source then
+    local source_icon = M.opts.source_icons[source] or (source == "git" and "" or "")
+    local source_label = M.opts.source_labels[source] or (source == "git" and "Git History" or "Vim Undo")
+    local source_text = "  󰜘  Source: " .. source_icon .. " " .. source_label
+    table.insert(header, {
+      type = "source_indicator",
+      text = source_text,
+      source = source,
+    })
+    table.insert(header, { type = "file_header", text = "" })
+  end
+
   return header
 end
 
@@ -496,16 +530,17 @@ end
 ---@param ctx table Snacks picker preview context
 ---@param diff_text string The unified diff string
 ---@param filepath? string Optional filepath to display in header
-function M.render_diff(ctx, diff_text, filepath)
+---@param source? "git"|"undo" Optional history source for indicator
+function M.render_diff(ctx, diff_text, filepath, source)
   local preview = ctx.preview
-  
+
   dbg.debug("preview", "render_diff called", {
     filepath = filepath,
     diff_text_length = diff_text and #diff_text or 0,
     diff_text_is_nil = diff_text == nil,
     diff_text_is_empty = diff_text == "",
   })
-  
+
   -- Handle nil or empty diff
   if not diff_text or diff_text == "" then
     dbg.warn("preview", "Empty or nil diff_text received", {
@@ -519,7 +554,7 @@ function M.render_diff(ctx, diff_text, filepath)
 
   -- Parse the diff
   local parsed, stats = M.parse_diff(diff_text)
-  
+
   dbg.info("preview", "Diff parsed", {
     filepath = filepath,
     parsed_lines = #parsed,
@@ -544,7 +579,7 @@ function M.render_diff(ctx, diff_text, filepath)
 
   -- Prepend file header if filepath is provided
   if filepath then
-    local header_lines = create_file_header(filepath, win_width)
+    local header_lines = create_file_header(filepath, win_width, source)
     -- Insert header lines at the beginning
     for i = #header_lines, 1, -1 do
       table.insert(parsed, 1, header_lines[i])
@@ -584,7 +619,7 @@ function M.render_diff(ctx, diff_text, filepath)
   for _, diff_line in ipairs(parsed) do
     table.insert(text_lines, diff_line.text)
   end
-  
+
   dbg.debug("preview", "Setting preview content", {
     text_lines_count = #text_lines,
     line_count = line_count,
@@ -634,20 +669,18 @@ function M.render_diff(ctx, diff_text, filepath)
         elseif diff_line.type == "no_newline" then
           hl_group = "FileHistoryNoNewline"
         elseif diff_line.type == "file_header" then
-          hl_group = "DiffChange"  -- Use DiffChange for file header background
+          hl_group = "DiffChange"
+        elseif diff_line.type == "source_indicator" then
+          hl_group = "DiffChange"
         end
 
         if hl_group then
           if highlight_style == "full" and win then
-            -- Full-width highlight
             vim.api.nvim_buf_add_highlight(ctx.buf, ns, hl_group, line_idx, 0, -1)
 
-            -- For file_header with icon, apply icon highlight separately to preserve fg color
             if diff_line.type == "file_header" and diff_line.icon_hl and diff_line.icon_end then
-              -- Get the background color from the header highlight group
               local header_bg = vim.api.nvim_get_hl(0, { name = hl_group })
 
-              -- Create a combined highlight for the icon with its fg and header bg
               local combined_hl = "FileHistoryIcon_" .. (diff_line.icon_hl or "Default")
               local icon_fg = vim.api.nvim_get_hl(0, { name = diff_line.icon_hl or "Normal" })
               vim.api.nvim_set_hl(0, combined_hl, {
@@ -655,8 +688,21 @@ function M.render_diff(ctx, diff_text, filepath)
                 bg = header_bg.bg,
               })
 
-              -- Apply the combined highlight to just the icon
               vim.api.nvim_buf_add_highlight(ctx.buf, ns, combined_hl, line_idx, 2, diff_line.icon_end)
+            end
+
+            if diff_line.type == "source_indicator" and diff_line.source then
+              local header_bg = vim.api.nvim_get_hl(0, { name = "DiffChange" })
+              local source_hl_name = diff_line.source == "git" and "FileHistorySourceGit" or "FileHistorySourceUndo"
+              local source_fg = vim.api.nvim_get_hl(0, { name = source_hl_name })
+
+              local combined_hl = "FileHistorySource_" .. diff_line.source
+              vim.api.nvim_set_hl(0, combined_hl, {
+                fg = source_fg.fg,
+                bg = header_bg.bg,
+              })
+
+              vim.api.nvim_buf_add_highlight(ctx.buf, ns, combined_hl, line_idx, 0, -1)
             end
 
             local line_text = vim.api.nvim_buf_get_lines(ctx.buf, line_idx, line_idx + 1, false)[1] or ""
